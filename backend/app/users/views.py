@@ -42,7 +42,9 @@ class GoogleLoginView(APIView):
             if social_app
             else db_config.client_secret if db_config else settings.GOOGLE_CLIENT_SECRET
         )
-        default_redirect_uri = db_config.redirect_uri if db_config and db_config.redirect_uri else None
+        default_redirect_uri = (
+            db_config.redirect_uri if db_config and db_config.redirect_uri else settings.GOOGLE_REDIRECT_URI or "postmessage"
+        )
 
         if not client_id:
             return Response({"detail": "Google OAuth client_id не сконфигурирован"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
