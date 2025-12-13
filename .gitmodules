@@ -1,0 +1,3 @@
+[submodule "revit-academy-online"]
+	path = revit-academy-online
+	url = git@github.com:nbaishev/revit-academy-online.git
