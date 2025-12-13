@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  web:
+    build: ./backend
+    command: gunicorn app.wsgi:application --bind 0.0.0.0:8000 --workers 3
+    env_file: .env
+    volumes:
+      - static:/app/static
+      - media:/app/media
+    depends_on:
+      - db
+
+  db:
+    image: postgres:16
+    env_file: .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+
+  nginx:
+    build: ./nginx
+    depends_on:
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - static:/static
+      - media:/media
+      - certbot-etc:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+      - certbot-www:/var/www/certbot
+
+  certbot:
+    build: ./certbot
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+      - certbot-www:/var/www/certbot
+    entrypoint: /bin/sh -c
+    command: >
+      "certbot certonly --webroot -w /var/www/certbot
+      --email nbaishev@gmail.com --agree-tos --no-eff-email
+      -d ustabim.online && crond -f"
+
+volumes:
+  static:
+  media:
+  postgres:
+  certbot-etc:
+  certbot-var:
+  certbot-www:
+
