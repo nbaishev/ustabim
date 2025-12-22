@@ -41,7 +41,8 @@ services:
     volumes:
       - ./revit-academy-online:/frontend
       - frontend-build:/frontend/dist
-    command: /bin/sh -c "npm install && npm run build"
+    command: /bin/sh -c "npm install && npm run build && tail -f /dev/null"
+    restart: unless-stopped
 
 volumes:
   static:

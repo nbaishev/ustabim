@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils.text import slugify
 
 
 class Course(models.Model):
@@ -8,14 +9,14 @@ class Course(models.Model):
         ("Продвинутый", "Продвинутый"),
     )
 
-    id = models.SlugField(primary_key=True, max_length=100)
+    id = models.SlugField(primary_key=True, max_length=100, allow_unicode=True)
     title = models.CharField(max_length=255)
     description = models.TextField()
     full_description = models.TextField(blank=True)
     is_free = models.BooleanField(default=False)
     level = models.CharField(max_length=32, choices=LEVEL_CHOICES, default="Начинающий")
     price = models.IntegerField(blank=True, null=True)
-    preview_image = models.URLField(blank=True, null=True)
+    preview_image = models.ImageField(upload_to="courses/previews/", blank=True, null=True)
     background_video_url = models.URLField(blank=True, null=True)
     seo_title = models.CharField(max_length=255, blank=True)
     seo_description = models.CharField(max_length=255, blank=True)
@@ -29,6 +30,12 @@ class Course(models.Model):
 
     def __str__(self):
         return self.title
+
+    def save(self, *args, **kwargs):
+        # Автоматически генерируем slug (поддерживаем кириллицу), если не задан
+        if not self.id and self.title:
+            self.id = slugify(self.title, allow_unicode=True)
+        super().save(*args, **kwargs)
 
 
 class Module(models.Model):

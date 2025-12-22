@@ -85,6 +85,12 @@ class AdminCourseViewSet(viewsets.ModelViewSet):
     permission_classes = [IsModeratorOrAdmin]
     serializer_class = CourseSerializer
 
+    def get_queryset(self):
+        return super().get_queryset().annotate(
+            lessons_count=Count("modules__lessons", distinct=True),
+            modules_count=Count("modules", distinct=True),
+        )
+
     def get_serializer_class(self):
         if self.action in ("create", "update", "partial_update"):
             return CourseWriteSerializer

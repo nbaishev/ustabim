@@ -15,7 +15,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 router = DefaultRouter()
 router.register(r"courses", CourseViewSet, basename="course")
 router.register(r"purchase", PurchaseViewSet, basename="purchase")
-router.register(r"admin/courses", AdminCourseViewSet, basename="admin-course")
+router.register(r"moderator/courses", AdminCourseViewSet, basename="moderator-course")
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -27,9 +27,8 @@ urlpatterns = [
     path("api/me/courses/", MyCoursesView.as_view(), name="me-courses"),
     path("api/me/progress/", ProgressListView.as_view(), name="me-progress"),
     path("api/me/progress/complete/", ProgressCompleteView.as_view(), name="me-progress-complete"),
-    path("api/admin/stats/", StatsView.as_view(), name="admin-stats"),
+    path("api/moderator/stats/", StatsView.as_view(), name="moderator-stats"),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
     path("api/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
 ]
-

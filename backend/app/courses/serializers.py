@@ -119,3 +119,7 @@ class CourseWriteSerializer(serializers.ModelSerializer):
             "seo_description",
             "is_featured",
         )
+        extra_kwargs = {
+            # Позволяем не указывать slug при создании — он сгенерируется из title
+            "id": {"required": False},
+        }

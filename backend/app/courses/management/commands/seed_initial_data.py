@@ -12,7 +12,7 @@ COURSES = [
         "is_free": True,
         "level": "Начинающий",
         "price": None,
-        "preview_image": "/placeholder.svg",
+        "preview_image": None,
         "is_featured": True,
         "modules": [
             {
@@ -50,7 +50,7 @@ COURSES = [
         "is_free": False,
         "level": "Средний",
         "price": 4990,
-        "preview_image": "/placeholder.svg",
+        "preview_image": None,
         "is_featured": True,
         "modules": [
             {
@@ -78,7 +78,7 @@ COURSES = [
         "is_free": False,
         "level": "Средний",
         "price": 5990,
-        "preview_image": "/placeholder.svg",
+        "preview_image": None,
         "is_featured": True,
         "modules": [
             {
@@ -98,7 +98,7 @@ COURSES = [
         "is_free": False,
         "level": "Средний",
         "price": 4490,
-        "preview_image": "/placeholder.svg",
+        "preview_image": None,
         "is_featured": False,
         "modules": [
             {
@@ -117,7 +117,7 @@ COURSES = [
         "is_free": False,
         "level": "Продвинутый",
         "price": 6990,
-        "preview_image": "/placeholder.svg",
+        "preview_image": None,
         "is_featured": False,
         "modules": [
             {
@@ -136,7 +136,7 @@ COURSES = [
         "is_free": False,
         "level": "Продвинутый",
         "price": 7490,
-        "preview_image": "/placeholder.svg",
+        "preview_image": None,
         "is_featured": False,
         "modules": [
             {
@@ -189,4 +189,3 @@ class Command(BaseCommand):
                         video_url=f"https://www.youtube.com/watch?v={lesson_data['video_id']}",
                     )
         self.stdout.write(self.style.SUCCESS(f"Seeded courses. New courses: {created_count}"))
-
