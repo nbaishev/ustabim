@@ -129,7 +129,7 @@ ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_SIGNUP_ENABLED = False
 ACCOUNT_LOGIN_METHODS = {"email"}
 # align signup fields with login method to avoid account.W001
-ACCOUNT_SIGNUP_FIELDS = ["email"]
+ACCOUNT_SIGNUP_FIELDS = ["email*"]
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (

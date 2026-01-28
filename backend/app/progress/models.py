@@ -7,10 +7,11 @@ class UserLessonProgress(models.Model):
     lesson = models.ForeignKey("courses.Lesson", related_name="progress_records", on_delete=models.CASCADE)
     is_completed = models.BooleanField(default=False)
     completed_at = models.DateTimeField(blank=True, null=True)
+    last_viewed_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         unique_together = ("user", "lesson")
-        ordering = ["-completed_at", "lesson_id"]
+        ordering = ["-last_viewed_at", "-completed_at", "lesson_id"]
 
     def __str__(self):
         return f"{self.user.email} - {self.lesson_id} ({'done' if self.is_completed else 'pending'})"

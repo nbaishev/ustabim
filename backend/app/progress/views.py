@@ -47,13 +47,52 @@ class ProgressCompleteView(APIView):
         progress, _ = UserLessonProgress.objects.get_or_create(
             user=request.user,
             lesson=lesson,
-            defaults={"is_completed": True, "completed_at": timezone.now()},
+            defaults={
+                "is_completed": True,
+                "completed_at": timezone.now(),
+                "last_viewed_at": timezone.now(),
+            },
         )
         if not progress.is_completed:
             progress.is_completed = True
             progress.completed_at = timezone.now()
-            progress.save(update_fields=["is_completed", "completed_at"])
+        progress.last_viewed_at = timezone.now()
+        progress.save(update_fields=["is_completed", "completed_at", "last_viewed_at"])
 
         serializer = UserLessonProgressSerializer(progress)
         return Response(serializer.data)
 
+
+class ProgressViewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        course_id = request.data.get("course_id")
+        lesson_id = request.data.get("lesson_id")
+        if not course_id or not lesson_id:
+            return Response({"detail": "course_id and lesson_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            course = Course.objects.get(id=course_id)
+        except Course.DoesNotExist:
+            return Response({"detail": "Course not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            lesson = Lesson.objects.get(id=lesson_id, module__course=course)
+        except Lesson.DoesNotExist:
+            return Response({"detail": "Lesson not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if not user_has_course_access(request.user, course):
+            return Response({"detail": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
+
+        progress, _ = UserLessonProgress.objects.get_or_create(
+            user=request.user,
+            lesson=lesson,
+            defaults={"last_viewed_at": timezone.now()},
+        )
+        progress.last_viewed_at = timezone.now()
+        progress.save(update_fields=["last_viewed_at"])
+
+        progress.refresh_from_db()
+        serializer = UserLessonProgressSerializer(progress)
+        return Response(serializer.data)

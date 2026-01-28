@@ -9,7 +9,7 @@ from rest_framework.routers import DefaultRouter
 from courses.views import CourseViewSet, AdminCourseViewSet, StatsView
 from purchases.views import PurchaseViewSet
 from users.views import GoogleLoginView, LogoutView, MeView, MyCoursesView
-from progress.views import ProgressListView, ProgressCompleteView
+from progress.views import ProgressListView, ProgressCompleteView, ProgressViewView
 from rest_framework_simplejwt.views import TokenRefreshView
 
 router = DefaultRouter()
@@ -27,6 +27,7 @@ urlpatterns = [
     path("api/me/courses/", MyCoursesView.as_view(), name="me-courses"),
     path("api/me/progress/", ProgressListView.as_view(), name="me-progress"),
     path("api/me/progress/complete/", ProgressCompleteView.as_view(), name="me-progress-complete"),
+    path("api/me/progress/view/", ProgressViewView.as_view(), name="me-progress-view"),
     path("api/moderator/stats/", StatsView.as_view(), name="moderator-stats"),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),

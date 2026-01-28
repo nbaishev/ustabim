@@ -9,8 +9,8 @@ class UserLessonProgressSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserLessonProgress
-        fields = ("id", "lesson", "course_id", "is_completed", "completed_at")
-        read_only_fields = ("id", "completed_at")
+        fields = ("id", "lesson", "course_id", "is_completed", "completed_at", "last_viewed_at")
+        read_only_fields = ("id", "completed_at", "last_viewed_at")
 
     def get_course_id(self, obj):
         return obj.lesson.module.course_id
