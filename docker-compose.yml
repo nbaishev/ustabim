@@ -8,6 +8,7 @@ services:
       - media:/app/media
     depends_on:
       - db
+    restart: unless-stopped
 
   db:
     image: postgres:16
@@ -18,6 +19,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres:/var/lib/postgresql/data
+    restart: unless-stopped
 
   nginx:
     build: ./nginx
@@ -32,6 +34,7 @@ services:
       - certbot-etc:/etc/letsencrypt
       - certbot-var:/var/lib/letsencrypt
       - certbot-www:/var/www/certbot
+    restart: unless-stopped
 
   certbot:
     build: ./certbot
@@ -43,7 +46,12 @@ services:
     command: >
       "certbot certonly --webroot -w /var/www/certbot
       --email nbaishev@gmail.com --agree-tos --no-eff-email
-      -d ustabim.online && crond -f"
+      -d ustabim.online --keep-until-expiring &&
+      while :; do
+        certbot renew --webroot -w /var/www/certbot --quiet;
+        sleep 12h;
+      done"
+    restart: unless-stopped
 
 volumes:
   static:
@@ -52,4 +60,3 @@ volumes:
   certbot-etc:
   certbot-var:
   certbot-www:
-

@@ -7,8 +7,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 def env(name: str, default=None):
     return os.environ.get(name, default)
 
+def env_bool(name: str, default: bool = False) -> bool:
+    value = env(name, None)
+    if value is None:
+        return default
+    return str(value).lower() == "true"
+
 SECRET_KEY = env("DJANGO_SECRET_KEY", "change-me")
-DEBUG = env("DJANGO_DEBUG", "False").lower() == "true"
+DEBUG = env_bool("DJANGO_DEBUG", False)
 ALLOWED_HOSTS = env("DJANGO_ALLOWED_HOSTS", "").split(",") if env("DJANGO_ALLOWED_HOSTS") else []
 
 CSRF_TRUSTED_ORIGINS = env("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if env("DJANGO_CSRF_TRUSTED_ORIGINS") else []
@@ -176,13 +182,35 @@ SPECTACULAR_SETTINGS = {
 CORS_ALLOWED_ORIGINS = env("DJANGO_CORS_ALLOWED_ORIGINS", "").split(",") if env("DJANGO_CORS_ALLOWED_ORIGINS") else []
 CORS_ALLOW_CREDENTIALS = True
 
-USE_X_FORWARDED_HOST = env("USE_X_FORWARDED_HOST", "False").lower() == "true"
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if env("USE_SECURE_PROXY_HEADER", "False").lower() == "true" else None
+USE_X_FORWARDED_HOST = env_bool("USE_X_FORWARDED_HOST", False)
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if env_bool("USE_SECURE_PROXY_HEADER", False) else None
+
+# Security (defaults assume HTTPS in production)
+SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", not DEBUG)
+SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", not DEBUG)
+CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", not DEBUG)
+SECURE_HSTS_SECONDS = int(env("SECURE_HSTS_SECONDS", "31536000" if not DEBUG else "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", not DEBUG)
+SECURE_HSTS_PRELOAD = env_bool("SECURE_HSTS_PRELOAD", not DEBUG)
+SECURE_REFERRER_POLICY = env("SECURE_REFERRER_POLICY", "same-origin")
 
 GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_DEV_BYPASS_TOKEN = env("GOOGLE_DEV_BYPASS_TOKEN", "")
 GOOGLE_REDIRECT_URI = env("GOOGLE_REDIRECT_URI", "")
+
+# Finik payments
+FINIK_BASE_URL = env("FINIK_BASE_URL", "https://api.acquiring.averspay.kg")
+FINIK_API_KEY = env("FINIK_API_KEY", "")
+FINIK_PRIVATE_PEM = env("FINIK_PRIVATE_PEM", "")
+FINIK_PUBLIC_PEM = env("FINIK_PUBLIC_PEM", "")
+FINIK_ACCOUNT_ID = env("FINIK_ACCOUNT_ID", "")
+FINIK_MERCHANT_CATEGORY_CODE = env("FINIK_MERCHANT_CATEGORY_CODE", env("FINIK_MCC", ""))
+FINIK_QR_NAME = env("FINIK_QR_NAME", "")
+FINIK_REDIRECT_URL = env("FINIK_REDIRECT_URL", "")
+FINIK_WEBHOOK_URL = env("FINIK_WEBHOOK_URL", "")
+FINIK_WEBHOOK_SKEW_MS = int(env("FINIK_WEBHOOK_SKEW_MS", "300000"))
+FINIK_TIMEOUT_SECONDS = int(env("FINIK_TIMEOUT_SECONDS", "15"))
 
 LOG_LEVEL = env("LOG_LEVEL", "INFO")
 LOGGING = {

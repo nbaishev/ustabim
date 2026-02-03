@@ -1,4 +1,5 @@
 from django.db.models import Count, Q
+from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -13,6 +14,7 @@ from .serializers import (
     CourseDetailSerializer,
     CourseSerializer,
     CourseWriteSerializer,
+    LessonSerializer,
     LessonPublicSerializer,
     ModulePublicSerializer,
 )
@@ -23,7 +25,7 @@ from users.models import User
 
 class CourseViewSet(viewsets.ReadOnlyModelViewSet):
     lookup_field = "id"
-    queryset = Course.objects.all().prefetch_related("modules__lessons")
+    queryset = Course.objects.all()
     serializer_class = CourseSerializer
     permission_classes = [AllowAny]
     search_fields = ["title", "description", "full_description"]
@@ -31,7 +33,10 @@ class CourseViewSet(viewsets.ReadOnlyModelViewSet):
     ordering_fields = ["created_at", "title"]
 
     def get_queryset(self):
-        qs = super().get_queryset().annotate(
+        qs = super().get_queryset()
+        if getattr(self, "action", None) == "retrieve":
+            qs = qs.prefetch_related("modules__lessons")
+        qs = qs.annotate(
             lessons_count=Count("modules__lessons", distinct=True),
             modules_count=Count("modules", distinct=True),
         )
@@ -62,13 +67,12 @@ class CourseViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="content", permission_classes=[AllowAny])
     def content(self, request, id=None):
-        course = (
+        course = get_object_or_404(
             Course.objects.annotate(
                 lessons_count=Count("modules__lessons", distinct=True),
                 modules_count=Count("modules", distinct=True),
-            )
-            .prefetch_related("modules__lessons")
-            .get(id=id)
+            ).prefetch_related("modules__lessons"),
+            id=id,
         )
         if not course.is_free:
             if not request.user or not request.user.is_authenticated:
@@ -81,7 +85,7 @@ class CourseViewSet(viewsets.ReadOnlyModelViewSet):
 
 class AdminCourseViewSet(viewsets.ModelViewSet):
     lookup_field = "id"
-    queryset = Course.objects.all().prefetch_related("modules__lessons")
+    queryset = Course.objects.all()
     permission_classes = [IsModeratorOrAdmin]
     serializer_class = CourseSerializer
 
@@ -112,6 +116,7 @@ class AdminCourseViewSet(viewsets.ModelViewSet):
         module_id = request.data.get("module_id")
         title = request.data.get("title")
         video_url = request.data.get("video_url")
+        additional_materials = request.data.get("additional_materials")
         order = request.data.get("order") or 1
         duration = request.data.get("duration", "")
         if not all([module_id, title, video_url]):
@@ -120,8 +125,32 @@ class AdminCourseViewSet(viewsets.ModelViewSet):
             module = Module.objects.get(id=module_id, course=course)
         except Module.DoesNotExist:
             return Response({"detail": "Module not found"}, status=status.HTTP_404_NOT_FOUND)
-        lesson = Lesson.objects.create(module=module, title=title, video_url=video_url, order=order, duration=duration)
-        return Response(LessonPublicSerializer(lesson).data, status=status.HTTP_201_CREATED)
+        lesson = Lesson.objects.create(
+            module=module,
+            title=title,
+            video_url=video_url,
+            additional_materials=additional_materials,
+            order=order,
+            duration=duration,
+        )
+        return Response(LessonSerializer(lesson).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["patch"], url_path=r"lessons/(?P<lesson_id>[^/.]+)")
+    def update_lesson(self, request, id=None, lesson_id=None):
+        course = self.get_object()
+        if lesson_id is None:
+            return Response({"detail": "lesson_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            lesson = Lesson.objects.get(id=lesson_id, module__course=course)
+        except Lesson.DoesNotExist:
+            return Response({"detail": "Lesson not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if "additional_materials" not in request.data:
+            return Response({"detail": "additional_materials is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        lesson.additional_materials = request.data.get("additional_materials")
+        lesson.save(update_fields=["additional_materials"])
+        return Response(LessonSerializer(lesson).data)
 
 
 class StatsView(APIView):

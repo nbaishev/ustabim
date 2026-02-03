@@ -11,7 +11,7 @@ class LessonPublicSerializer(serializers.ModelSerializer):
 class LessonSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lesson
-        fields = ("id", "title", "order", "duration", "video_url")
+        fields = ("id", "title", "order", "duration", "video_url", "additional_materials")
 
 
 class ModulePublicSerializer(serializers.ModelSerializer):
@@ -43,6 +43,7 @@ class CourseBriefSerializer(serializers.ModelSerializer):
             "is_free",
             "level",
             "price",
+            "discount_price",
             "preview_image",
             "is_featured",
             "lessons_count",
@@ -70,6 +71,7 @@ class CourseSerializer(serializers.ModelSerializer):
             "is_free",
             "level",
             "price",
+            "discount_price",
             "preview_image",
             "background_video_url",
             "seo_title",
@@ -113,6 +115,7 @@ class CourseWriteSerializer(serializers.ModelSerializer):
             "is_free",
             "level",
             "price",
+            "discount_price",
             "preview_image",
             "background_video_url",
             "seo_title",
@@ -123,3 +126,21 @@ class CourseWriteSerializer(serializers.ModelSerializer):
             # Позволяем не указывать slug при создании — он сгенерируется из title
             "id": {"required": False},
         }
+
+    def validate(self, attrs):
+        instance = getattr(self, "instance", None)
+        is_free = attrs.get("is_free", getattr(instance, "is_free", False))
+        price = attrs.get("price", getattr(instance, "price", None))
+        discount_price = attrs.get("discount_price", getattr(instance, "discount_price", None))
+
+        if not is_free:
+            if not price or price <= 0:
+                raise serializers.ValidationError("Course price is not set")
+        if discount_price is not None:
+            if not price or price <= 0:
+                raise serializers.ValidationError("Course price is required to set discount")
+            if discount_price <= 0:
+                raise serializers.ValidationError("Discount price must be greater than 0")
+            if discount_price >= price:
+                raise serializers.ValidationError("Discount price must be lower than regular price")
+        return attrs

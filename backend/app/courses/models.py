@@ -16,6 +16,7 @@ class Course(models.Model):
     is_free = models.BooleanField(default=False)
     level = models.CharField(max_length=32, choices=LEVEL_CHOICES, default="Начинающий")
     price = models.IntegerField(blank=True, null=True)
+    discount_price = models.IntegerField(blank=True, null=True)
     preview_image = models.ImageField(upload_to="courses/previews/", blank=True, null=True)
     background_video_url = models.URLField(blank=True, null=True)
     seo_title = models.CharField(max_length=255, blank=True)
@@ -37,6 +38,16 @@ class Course(models.Model):
             self.id = slugify(self.title, allow_unicode=True)
         super().save(*args, **kwargs)
 
+    @property
+    def effective_price(self) -> int:
+        if self.is_free:
+            return 0
+        price = self.price or 0
+        discount = self.discount_price or 0
+        if discount > 0 and price > 0 and discount < price:
+            return discount
+        return price
+
 
 class Module(models.Model):
     course = models.ForeignKey(Course, related_name="modules", on_delete=models.CASCADE)
@@ -54,6 +65,7 @@ class Lesson(models.Model):
     module = models.ForeignKey(Module, related_name="lessons", on_delete=models.CASCADE)
     title = models.CharField(max_length=255)
     video_url = models.URLField()
+    additional_materials = models.URLField(blank=True, null=True)
     order = models.PositiveIntegerField(default=1)
     duration = models.CharField(max_length=50, blank=True)
 

@@ -66,3 +66,5 @@ docker compose -f docker-compose.local.yml exec frontend npm run build
 - DNS домена указывает на сервер
 - в `docker-compose.yml` указаны актуальные email и домены
 
+Примечание: контейнер `nginx` стартует в режиме HTTP, пока нет сертификатов. После получения сертификата он автоматически переключается на HTTPS и делает reload.
+`certbot` запускает циклическое продление сертификата (каждые 12 часов).

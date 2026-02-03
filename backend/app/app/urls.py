@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import (
@@ -5,9 +6,10 @@ from drf_spectacular.views import (
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
+from rest_framework.permissions import IsAdminUser
 from rest_framework.routers import DefaultRouter
 from courses.views import CourseViewSet, AdminCourseViewSet, StatsView
-from purchases.views import PurchaseViewSet
+from purchases.views import PurchaseViewSet, FinikWebhookView
 from users.views import GoogleLoginView, LogoutView, MeView, MyCoursesView
 from progress.views import ProgressListView, ProgressCompleteView, ProgressViewView
 from rest_framework_simplejwt.views import TokenRefreshView
@@ -29,7 +31,26 @@ urlpatterns = [
     path("api/me/progress/complete/", ProgressCompleteView.as_view(), name="me-progress-complete"),
     path("api/me/progress/view/", ProgressViewView.as_view(), name="me-progress-view"),
     path("api/moderator/stats/", StatsView.as_view(), name="moderator-stats"),
-    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
-    path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
-    path("api/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
+    path("api/payments/finik/webhook/", FinikWebhookView.as_view(), name="finik-webhook"),
 ]
+
+if settings.DEBUG:
+    urlpatterns += [
+        path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+        path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
+        path("api/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
+    ]
+else:
+    urlpatterns += [
+        path("api/schema/", SpectacularAPIView.as_view(permission_classes=[IsAdminUser]), name="schema"),
+        path(
+            "api/docs/",
+            SpectacularSwaggerView.as_view(url_name="schema", permission_classes=[IsAdminUser]),
+            name="swagger-ui",
+        ),
+        path(
+            "api/redoc/",
+            SpectacularRedocView.as_view(url_name="schema", permission_classes=[IsAdminUser]),
+            name="redoc",
+        ),
+    ]

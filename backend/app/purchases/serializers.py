@@ -8,8 +8,8 @@ class PurchaseSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Purchase
-        fields = ("id", "course", "status", "transaction_id", "created_at")
-        read_only_fields = ("id", "status", "transaction_id", "created_at")
+        fields = ("id", "payment_id", "course", "amount", "status", "transaction_id", "created_at")
+        read_only_fields = ("id", "payment_id", "amount", "status", "transaction_id", "created_at")
 
 
 class PurchaseCreateSerializer(serializers.Serializer):
@@ -22,6 +22,14 @@ class PurchaseCreateSerializer(serializers.Serializer):
             course = Course.objects.get(id=value)
         except Course.DoesNotExist:
             raise serializers.ValidationError("Course not found")
+        if not course.is_free:
+            if not course.price or course.price <= 0:
+                raise serializers.ValidationError("Course price is not set")
+            if course.discount_price is not None:
+                if course.discount_price <= 0:
+                    raise serializers.ValidationError("Course discount price is invalid")
+                if course.discount_price >= course.price:
+                    raise serializers.ValidationError("Course discount price must be lower than price")
         self.context["course"] = course
         return value
 
@@ -30,13 +38,21 @@ class PurchaseCreateSerializer(serializers.Serializer):
         course = self.context["course"]
         from .models import Purchase
 
-        purchase, created = Purchase.objects.get_or_create(
-            user=user,
-            course=course,
-            defaults={
-                # Заглушка: сразу оплачено, чтобы пользователь получил доступ.
-                "status": "paid" if not course.is_free else "paid",
-                "transaction_id": "mock-txn",
-            },
-        )
+        amount = int(course.effective_price)
+        defaults = {
+            "status": "paid" if course.is_free else "pending",
+            "amount": amount,
+        }
+        purchase, created = Purchase.objects.get_or_create(user=user, course=course, defaults=defaults)
+        self.context["purchase_created"] = created
+        if not created:
+            updates = []
+            if purchase.amount != amount and amount:
+                purchase.amount = amount
+                updates.append("amount")
+            if course.is_free and purchase.status != "paid":
+                purchase.status = "paid"
+                updates.append("status")
+            if updates:
+                purchase.save(update_fields=updates)
         return purchase
