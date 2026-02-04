@@ -41,13 +41,9 @@ docker compose -f docker-compose.local.yml exec frontend npm run build
 
 ## Запуск на боевом сервере (Docker)
 1. Подготовьте `.env` (на основе `.env.example`). Убедитесь, что `DJANGO_DEBUG=False` и домены указаны корректно.
-2. Соберите фронтенд и скопируйте сборку в `nginx/dist/`:
+2. Соберите фронтенд и скопируйте сборку в `nginx/dist/` (скрипт сам подтянет `VITE_*` из `.env`):
    ```sh
-   cd revit-academy-online
-   npm ci
-   npm run build
-   mkdir -p ../nginx/dist
-   cp -R dist/* ../nginx/dist/
+   ./scripts/build_frontend.sh
    ```
 3. Проверьте домен в `nginx/nginx.conf` и параметры certbot в `docker-compose.yml`.
 4. Запустите:
