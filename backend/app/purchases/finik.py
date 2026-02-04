@@ -164,11 +164,29 @@ def sign_request(
     return Signer(**request_data).sign(private_key_pem)
 
 
+def _decode_signature(signature_b64: str) -> Optional[bytes]:
+    signature = (signature_b64 or "").strip()
+    if not signature:
+        return None
+    try:
+        return base64.b64decode(signature, validate=True)
+    except Exception:
+        pass
+    try:
+        padded = signature + ("=" * (-len(signature) % 4))
+        return base64.urlsafe_b64decode(padded)
+    except Exception:
+        return None
+
+
 def verify_signature(payload: str, signature_b64: str, public_key_pem: str) -> bool:
     public_key = serialization.load_pem_public_key(public_key_pem.encode("utf-8"))
+    signature = _decode_signature(signature_b64)
+    if not signature:
+        return False
     try:
         public_key.verify(
-            base64.b64decode(signature_b64),
+            signature,
             payload.encode("utf-8"),
             padding.PKCS1v15(),
             hashes.SHA256(),

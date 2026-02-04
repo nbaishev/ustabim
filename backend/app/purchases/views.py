@@ -127,6 +127,12 @@ class FinikWebhookView(APIView):
         if not signature:
             return Response({"detail": "Missing signature"}, status=status.HTTP_400_BAD_REQUEST)
 
+        logger.warning(
+            "Finik webhook signature header: len=%s prefix=%s",
+            len(signature),
+            signature[:12],
+        )
+
         host_header = request.headers.get("Host") or request.get_host()
         headers = {"Host": host_header}
         for key, value in request.headers.items():
