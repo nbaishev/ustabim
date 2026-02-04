@@ -187,7 +187,10 @@ class FinikWebhookView(APIView):
             raw_body[:800],
         )
 
-        canonical_headers = _canonical_headers(headers)
+        canonical_headers_lower = _canonical_headers(headers)
+        canonical_headers_preserve = "&".join(
+            f"{key}:{value}" for key, value in sorted(headers.items(), key=lambda item: item[0])
+        )
         query_string = _canonical_query(query_params)
         body_canonical = _canonical_json(body)
         body_raw = raw_body or ""
@@ -198,25 +201,99 @@ class FinikWebhookView(APIView):
 
         methods = [request.method.lower(), request.method.upper()]
 
-        def build_canonical(method: str, path: str, body_text: str, use_query: bool, query_in_path: bool) -> str:
+        def build_canonical(
+            *,
+            method: str,
+            path: str,
+            body_text: str,
+            use_query: bool,
+            query_in_path: bool,
+            headers_text: str,
+            separator: str,
+        ) -> str:
             if query_in_path and query_string:
                 path = f"{path}?{query_string}"
-            parts = [method, path, canonical_headers]
+            parts = [method, path, headers_text]
             if query_string and use_query and not query_in_path:
                 parts.append(query_string)
             parts.append(body_text or "")
-            return "\n".join(parts)
+            return separator.join(parts)
 
         candidates = []
+        header_variants = [
+            ("lower", canonical_headers_lower),
+            ("preserve", canonical_headers_preserve),
+        ]
+        separators = ["\n", "\r\n"]
+        scheme_hosts = [None]
+        if host_header:
+            scheme_hosts.extend([f"https://{host_header}", f"http://{host_header}"])
+
         for method in methods:
             for path in paths:
-                for body_text, body_label in ((body_canonical, "canonical"), (body_raw, "raw")):
-                    if query_string:
-                        candidates.append((f"{method}:{path}:q:canon:{body_label}", build_canonical(method, path, body_text, True, False)))
-                        candidates.append((f"{method}:{path}:noq:canon:{body_label}", build_canonical(method, path, body_text, False, False)))
-                        candidates.append((f"{method}:{path}:qpath:canon:{body_label}", build_canonical(method, path, body_text, True, True)))
-                    else:
-                        candidates.append((f"{method}:{path}:noq:canon:{body_label}", build_canonical(method, path, body_text, False, False)))
+                for scheme_host in scheme_hosts:
+                    path_value = f"{scheme_host}{path}" if scheme_host else path
+                    for body_text, body_label in ((body_canonical, "canonical"), (body_raw, "raw")):
+                        for header_label, headers_text in header_variants:
+                            for separator in separators:
+                                if query_string:
+                                    candidates.append(
+                                        (
+                                            f"{method}:{path_value}:q:{header_label}:{separator}:{body_label}",
+                                            build_canonical(
+                                                method=method,
+                                                path=path_value,
+                                                body_text=body_text,
+                                                use_query=True,
+                                                query_in_path=False,
+                                                headers_text=headers_text,
+                                                separator=separator,
+                                            ),
+                                        )
+                                    )
+                                    candidates.append(
+                                        (
+                                            f"{method}:{path_value}:noq:{header_label}:{separator}:{body_label}",
+                                            build_canonical(
+                                                method=method,
+                                                path=path_value,
+                                                body_text=body_text,
+                                                use_query=False,
+                                                query_in_path=False,
+                                                headers_text=headers_text,
+                                                separator=separator,
+                                            ),
+                                        )
+                                    )
+                                    candidates.append(
+                                        (
+                                            f"{method}:{path_value}:qpath:{header_label}:{separator}:{body_label}",
+                                            build_canonical(
+                                                method=method,
+                                                path=path_value,
+                                                body_text=body_text,
+                                                use_query=True,
+                                                query_in_path=True,
+                                                headers_text=headers_text,
+                                                separator=separator,
+                                            ),
+                                        )
+                                    )
+                                else:
+                                    candidates.append(
+                                        (
+                                            f"{method}:{path_value}:noq:{header_label}:{separator}:{body_label}",
+                                            build_canonical(
+                                                method=method,
+                                                path=path_value,
+                                                body_text=body_text,
+                                                use_query=False,
+                                                query_in_path=False,
+                                                headers_text=headers_text,
+                                                separator=separator,
+                                            ),
+                                        )
+                                    )
 
         # Some providers sign only the body payload (no method/path/headers)
         for body_text, body_label in ((body_canonical, "canonical"), (body_raw, "raw")):

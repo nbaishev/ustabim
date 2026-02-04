@@ -184,16 +184,20 @@ def verify_signature(payload: str, signature_b64: str, public_key_pem: str) -> b
     signature = _decode_signature(signature_b64)
     if not signature:
         return False
-    try:
-        public_key.verify(
-            signature,
-            payload.encode("utf-8"),
-            padding.PKCS1v15(),
-            hashes.SHA256(),
-        )
-        return True
-    except Exception:
-        return False
+    payload_bytes = payload.encode("utf-8")
+    candidates = [
+        (padding.PKCS1v15(), hashes.SHA256()),
+        (padding.PKCS1v15(), hashes.SHA512()),
+        (padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH), hashes.SHA256()),
+        (padding.PSS(mgf=padding.MGF1(hashes.SHA512()), salt_length=padding.PSS.MAX_LENGTH), hashes.SHA512()),
+    ]
+    for pad, digest in candidates:
+        try:
+            public_key.verify(signature, payload_bytes, pad, digest)
+            return True
+        except Exception:
+            continue
+    return False
 
 
 def create_payment(
