@@ -29,17 +29,8 @@ def _verify_with_authorizer(request_data, public_key_pem: str, signature: str) -
     except Exception:
         return False
 
-    verify = getattr(signer, "verify", None)
-    if not callable(verify):
-        return False
-
     try:
-        return bool(verify(public_key_pem, signature))
-    except TypeError:
-        try:
-            return bool(verify(signature, public_key_pem))
-        except Exception:
-            return False
+        return signer.verify(public_key_pem, signature)
     except Exception:
         return False
 
@@ -124,6 +115,12 @@ class FinikWebhookView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
 
+    @staticmethod
+    def _sorted_body(body):
+        if not isinstance(body, dict):
+            return body
+        return {key: body[key] for key in sorted(body)}
+
     def post(self, request):
         return self._handle(request)
 
@@ -165,6 +162,7 @@ class FinikWebhookView(APIView):
 
         query_params = request.query_params.dict() if request.query_params else None
         body = request.data if isinstance(request.data, dict) else {}
+        body = self._sorted_body(body)
 
         x_api_headers = {k: v for k, v in headers.items() if k.lower().startswith("x-api-")}
         logger.warning(
