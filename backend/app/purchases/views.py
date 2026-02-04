@@ -303,28 +303,26 @@ class FinikWebhookView(APIView):
         verified = False
         matched = None
 
-        # Try official authorizer signer verification (if available).
-        # Use full headers from the request (excluding signature), since the signer
-        # may include more than x-api-* headers in its canonicalization.
-        full_headers = {k: v for k, v in request.headers.items() if k.lower() != "signature"}
-        if "Host" not in full_headers and "host" not in full_headers:
-            full_headers["Host"] = host_header
+        # Try official authorizer signer verification (same canonicalizer as Create Payment).
+        # NOTE: authorizer filters headers by keys that start with 'x-api-' (case-sensitive),
+        # so we must normalize to lowercase for those keys and keep 'Host' exact.
+        authorizer_headers = {"Host": host_header}
+        for key, value in request.headers.items():
+            if key.lower().startswith("x-api-"):
+                authorizer_headers[key.lower()] = value
 
-        authorizer_payloads = []
-        for path in paths:
-            for body_value, label in ((body, "dict"), (body_raw, "raw")):
-                authorizer_payloads.append(
-                    (
-                        f"authorizer:{path}:{label}",
-                        {
-                            "http_method": request.method,
-                            "path": path,
-                            "headers": full_headers,
-                            "query_string_parameters": query_params,
-                            "body": body_value,
-                        },
-                    )
-                )
+        authorizer_payloads = [
+            (
+                f"authorizer:{request.path}",
+                {
+                    "http_method": request.method,
+                    "path": request.path,
+                    "headers": authorizer_headers,
+                    "query_string_parameters": query_params,
+                    "body": body,
+                },
+            )
+        ]
 
         for label, payload in authorizer_payloads:
             if _verify_with_authorizer(payload, config.public_key_pem, signature):
