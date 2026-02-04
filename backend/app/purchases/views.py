@@ -134,17 +134,17 @@ class FinikWebhookView(APIView):
         query_params = request.query_params.dict() if request.query_params else None
         body = request.data if isinstance(request.data, dict) else {}
 
+        x_api_headers = {k: v for k, v in headers.items() if k.lower().startswith("x-api-")}
         logger.warning(
-            "Finik webhook incoming",
-            extra={
-                "method": request.method,
-                "path": request.path,
-                "host": host_header,
-                "content_type": request.headers.get("Content-Type"),
-                "x_api_headers": {k: v for k, v in headers.items() if k.lower().startswith("x-api-")},
-                "query": query_params,
-                "raw_body": raw_body[:800],
-            },
+            "Finik webhook incoming: method=%s path=%s host=%s django_host=%s content_type=%s x_api_headers=%s query=%s raw_body=%s",
+            request.method,
+            request.path,
+            host_header,
+            request.get_host(),
+            request.headers.get("Content-Type"),
+            x_api_headers,
+            query_params,
+            raw_body[:800],
         )
 
         def build_canonical_raw(path: str, body_text: str) -> str:
@@ -177,13 +177,14 @@ class FinikWebhookView(APIView):
 
         if not verified:
             logger.warning(
-                "Finik webhook signature mismatch",
-                extra={
-                    "method": request.method,
-                    "path": request.path,
-                    "host": host_header,
-                    "x_api_headers": sorted([k for k in headers.keys() if k.lower().startswith("x-api-")]),
-                },
+                "Finik webhook signature mismatch: method=%s path=%s host=%s django_host=%s x_api_headers=%s body_keys=%s raw_body_len=%s",
+                request.method,
+                request.path,
+                host_header,
+                request.get_host(),
+                sorted([k for k in headers.keys() if k.lower().startswith("x-api-")]),
+                sorted(body.keys()) if isinstance(body, dict) else None,
+                len(raw_body),
             )
             return Response({"detail": "Invalid signature"}, status=status.HTTP_401_UNAUTHORIZED)
 
