@@ -26,6 +26,32 @@ from .finik import (
 logger = logging.getLogger(__name__)
 
 
+def _verify_with_authorizer(request_data, public_key_pem: str, signature: str) -> bool:
+    try:
+        from authorizer import Signer as AuthorizerSigner
+    except Exception:
+        return False
+
+    try:
+        signer = AuthorizerSigner(**request_data)
+    except Exception:
+        return False
+
+    verify = getattr(signer, "verify", None)
+    if not callable(verify):
+        return False
+
+    try:
+        return bool(verify(public_key_pem, signature))
+    except TypeError:
+        try:
+            return bool(verify(signature, public_key_pem))
+        except Exception:
+            return False
+    except Exception:
+        return False
+
+
 class PurchaseViewSet(mixins.CreateModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
     queryset = Purchase.objects.all()
@@ -199,11 +225,42 @@ class FinikWebhookView(APIView):
 
         verified = False
         matched = None
-        for label, canonical in candidates:
-            if verify_signature(canonical, signature, config.public_key_pem):
+
+        # Try official authorizer signer verification (if available).
+        # Use full headers from the request (excluding signature), since the signer
+        # may include more than x-api-* headers in its canonicalization.
+        full_headers = {k: v for k, v in request.headers.items() if k.lower() != "signature"}
+        if "Host" not in full_headers and "host" not in full_headers:
+            full_headers["Host"] = host_header
+
+        authorizer_payloads = []
+        for path in paths:
+            for body_value, label in ((body, "dict"), (body_raw, "raw")):
+                authorizer_payloads.append(
+                    (
+                        f"authorizer:{path}:{label}",
+                        {
+                            "http_method": request.method,
+                            "path": path,
+                            "headers": full_headers,
+                            "query_string_parameters": query_params,
+                            "body": body_value,
+                        },
+                    )
+                )
+
+        for label, payload in authorizer_payloads:
+            if _verify_with_authorizer(payload, config.public_key_pem, signature):
                 verified = True
                 matched = label
                 break
+
+        if not verified:
+            for label, canonical in candidates:
+                if verify_signature(canonical, signature, config.public_key_pem):
+                    verified = True
+                    matched = label
+                    break
 
         if verified and matched:
             logger.info("Finik webhook signature verified using %s", matched)
