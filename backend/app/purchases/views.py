@@ -4,6 +4,7 @@ import uuid
 import logging
 import requests
 from django.conf import settings
+from django.http import RawPostDataException
 from rest_framework import mixins, status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -124,9 +125,14 @@ class FinikWebhookView(APIView):
             if key.lower().startswith("x-api-"):
                 headers[key] = value
 
+        try:
+            raw_bytes = request.body  # must be read before request.data
+        except RawPostDataException:
+            raw_bytes = b""
+        raw_body = raw_bytes.decode("utf-8", errors="replace") if raw_bytes else ""
+
         query_params = request.query_params.dict() if request.query_params else None
         body = request.data if isinstance(request.data, dict) else {}
-        raw_body = request.body.decode("utf-8", errors="replace") if request.body else ""
 
         logger.warning(
             "Finik webhook incoming",
