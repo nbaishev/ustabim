@@ -109,6 +109,8 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "/static/"
+# Source static files (e.g. legal docs) live under /app/app/static
+STATICFILES_DIRS = [BASE_DIR / "static"]
 # Храним статику/медиа на верхнем уровне проекта (/app/static, /app/media),
 # чтобы их можно было монтировать в контейнеры nginx/web.
 STATIC_ROOT = BASE_DIR.parent / "static"

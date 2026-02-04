@@ -14,6 +14,7 @@ class Course(models.Model):
     description = models.TextField()
     full_description = models.TextField(blank=True)
     is_free = models.BooleanField(default=False)
+    published = models.BooleanField(default=True)
     level = models.CharField(max_length=32, choices=LEVEL_CHOICES, default="Начинающий")
     price = models.IntegerField(blank=True, null=True)
     discount_price = models.IntegerField(blank=True, null=True)

@@ -1,7 +1,7 @@
 services:
   web:
     build: ./backend
-    command: gunicorn app.wsgi:application --bind 0.0.0.0:8000 --workers 3
+    command: /bin/sh -c "python manage.py collectstatic --noinput && gunicorn app.wsgi:application --bind 0.0.0.0:8000 --workers 3"
     env_file: .env
     volumes:
       - static:/app/static
