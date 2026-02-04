@@ -192,6 +192,11 @@ class FinikWebhookView(APIView):
                     else:
                         candidates.append((f"{method}:{path}:noq:canon:{body_label}", build_canonical(method, path, body_text, False, False)))
 
+        # Some providers sign only the body payload (no method/path/headers)
+        for body_text, body_label in ((body_canonical, "canonical"), (body_raw, "raw")):
+            if body_text:
+                candidates.append((f"body-only:{body_label}", body_text))
+
         verified = False
         matched = None
         for label, canonical in candidates:
