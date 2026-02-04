@@ -99,6 +99,12 @@ class FinikWebhookView(APIView):
     def get(self, request):
         return self._handle(request)
 
+    def put(self, request):
+        return self._handle(request)
+
+    def patch(self, request):
+        return self._handle(request)
+
     def _handle(self, request):
         config = get_config()
         if not config.public_key_pem:
