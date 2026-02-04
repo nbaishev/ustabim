@@ -12,7 +12,15 @@ from rest_framework.views import APIView
 
 from .models import Purchase
 from .serializers import PurchaseCreateSerializer, PurchaseSerializer
-from .finik import build_canonical_request, create_payment, get_config, verify_signature, _canonical_headers, _canonical_query
+from .finik import (
+    build_canonical_request,
+    create_payment,
+    get_config,
+    verify_signature,
+    _canonical_headers,
+    _canonical_query,
+    _canonical_json,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -147,33 +155,47 @@ class FinikWebhookView(APIView):
             raw_body[:800],
         )
 
-        def build_canonical_raw(path: str, body_text: str) -> str:
-            parts = [
-                request.method.lower(),
-                path,
-                _canonical_headers(headers),
-            ]
-            query_string = _canonical_query(query_params)
-            if query_string:
-                parts.append(query_string)
-            parts.append(body_text or "")
-            return "\n".join(parts)
+        canonical_headers = _canonical_headers(headers)
+        query_string = _canonical_query(query_params)
+        body_canonical = _canonical_json(body)
+        body_raw = raw_body or ""
 
         paths = [request.path]
         if request.path.endswith("/"):
             paths.append(request.path[:-1])
 
+        methods = [request.method.lower(), request.method.upper()]
+
+        def build_canonical(method: str, path: str, body_text: str, use_query: bool, query_in_path: bool) -> str:
+            if query_in_path and query_string:
+                path = f"{path}?{query_string}"
+            parts = [method, path, canonical_headers]
+            if query_string and use_query and not query_in_path:
+                parts.append(query_string)
+            parts.append(body_text or "")
+            return "\n".join(parts)
+
+        candidates = []
+        for method in methods:
+            for path in paths:
+                for body_text, body_label in ((body_canonical, "canonical"), (body_raw, "raw")):
+                    if query_string:
+                        candidates.append((f"{method}:{path}:q:canon:{body_label}", build_canonical(method, path, body_text, True, False)))
+                        candidates.append((f"{method}:{path}:noq:canon:{body_label}", build_canonical(method, path, body_text, False, False)))
+                        candidates.append((f"{method}:{path}:qpath:canon:{body_label}", build_canonical(method, path, body_text, True, True)))
+                    else:
+                        candidates.append((f"{method}:{path}:noq:canon:{body_label}", build_canonical(method, path, body_text, False, False)))
+
         verified = False
-        for path in paths:
-            canonical = build_canonical_request(request.method, path, headers, query_params, body)
+        matched = None
+        for label, canonical in candidates:
             if verify_signature(canonical, signature, config.public_key_pem):
                 verified = True
+                matched = label
                 break
-            if raw_body:
-                canonical_raw = build_canonical_raw(path, raw_body)
-                if verify_signature(canonical_raw, signature, config.public_key_pem):
-                    verified = True
-                    break
+
+        if verified and matched:
+            logger.info("Finik webhook signature verified using %s", matched)
 
         if not verified:
             logger.warning(
