@@ -1,6 +1,7 @@
 import os
 import time
 import uuid
+import logging
 import requests
 from django.conf import settings
 from rest_framework import mixins, status, viewsets
@@ -10,7 +11,10 @@ from rest_framework.views import APIView
 
 from .models import Purchase
 from .serializers import PurchaseCreateSerializer, PurchaseSerializer
-from .finik import build_canonical_request, create_payment, get_config, verify_signature
+from .finik import build_canonical_request, create_payment, get_config, verify_signature, _canonical_headers, _canonical_query
+
+
+logger = logging.getLogger(__name__)
 
 
 class PurchaseViewSet(mixins.CreateModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
@@ -114,15 +118,54 @@ class FinikWebhookView(APIView):
         if not signature:
             return Response({"detail": "Missing signature"}, status=status.HTTP_400_BAD_REQUEST)
 
-        headers = {"Host": request.get_host()}
+        host_header = request.headers.get("Host") or request.get_host()
+        headers = {"Host": host_header}
         for key, value in request.headers.items():
             if key.lower().startswith("x-api-"):
                 headers[key] = value
 
         query_params = request.query_params.dict() if request.query_params else None
         body = request.data if isinstance(request.data, dict) else {}
-        canonical = build_canonical_request(request.method, request.path, headers, query_params, body)
-        if not verify_signature(canonical, signature, config.public_key_pem):
+        raw_body = request.body.decode("utf-8", errors="replace") if request.body else ""
+
+        def build_canonical_raw(path: str, body_text: str) -> str:
+            parts = [
+                request.method.lower(),
+                path,
+                _canonical_headers(headers),
+            ]
+            query_string = _canonical_query(query_params)
+            if query_string:
+                parts.append(query_string)
+            parts.append(body_text or "")
+            return "\n".join(parts)
+
+        paths = [request.path]
+        if request.path.endswith("/"):
+            paths.append(request.path[:-1])
+
+        verified = False
+        for path in paths:
+            canonical = build_canonical_request(request.method, path, headers, query_params, body)
+            if verify_signature(canonical, signature, config.public_key_pem):
+                verified = True
+                break
+            if raw_body:
+                canonical_raw = build_canonical_raw(path, raw_body)
+                if verify_signature(canonical_raw, signature, config.public_key_pem):
+                    verified = True
+                    break
+
+        if not verified:
+            logger.warning(
+                "Finik webhook signature mismatch",
+                extra={
+                    "method": request.method,
+                    "path": request.path,
+                    "host": host_header,
+                    "x_api_headers": sorted([k for k in headers.keys() if k.lower().startswith("x-api-")]),
+                },
+            )
             return Response({"detail": "Invalid signature"}, status=status.HTTP_401_UNAUTHORIZED)
 
         timestamp = request.headers.get("x-api-timestamp")
