@@ -128,6 +128,19 @@ class FinikWebhookView(APIView):
         body = request.data if isinstance(request.data, dict) else {}
         raw_body = request.body.decode("utf-8", errors="replace") if request.body else ""
 
+        logger.warning(
+            "Finik webhook incoming",
+            extra={
+                "method": request.method,
+                "path": request.path,
+                "host": host_header,
+                "content_type": request.headers.get("Content-Type"),
+                "x_api_headers": {k: v for k, v in headers.items() if k.lower().startswith("x-api-")},
+                "query": query_params,
+                "raw_body": raw_body[:800],
+            },
+        )
+
         def build_canonical_raw(path: str, body_text: str) -> str:
             parts = [
                 request.method.lower(),
