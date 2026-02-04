@@ -12,15 +12,7 @@ from rest_framework.views import APIView
 
 from .models import Purchase
 from .serializers import PurchaseCreateSerializer, PurchaseSerializer
-from .finik import (
-    build_canonical_request,
-    create_payment,
-    get_config,
-    verify_signature,
-    _canonical_headers,
-    _canonical_query,
-    _canonical_json,
-)
+from .finik import create_payment, get_config
 
 
 logger = logging.getLogger(__name__)
@@ -187,160 +179,26 @@ class FinikWebhookView(APIView):
             raw_body[:800],
         )
 
-        canonical_headers_lower = _canonical_headers(headers)
-        canonical_headers_preserve = "&".join(
-            f"{key}:{value}" for key, value in sorted(headers.items(), key=lambda item: item[0])
-        )
-        query_string = _canonical_query(query_params)
-        body_canonical = _canonical_json(body)
-        body_raw = raw_body or ""
-
-        paths = [request.path]
-        if request.path.endswith("/"):
-            paths.append(request.path[:-1])
-
-        methods = [request.method.lower(), request.method.upper()]
-
-        def build_canonical(
-            *,
-            method: str,
-            path: str,
-            body_text: str,
-            use_query: bool,
-            query_in_path: bool,
-            headers_text: str,
-            separator: str,
-        ) -> str:
-            if query_in_path and query_string:
-                path = f"{path}?{query_string}"
-            parts = [method, path, headers_text]
-            if query_string and use_query and not query_in_path:
-                parts.append(query_string)
-            parts.append(body_text or "")
-            return separator.join(parts)
-
-        candidates = []
-        header_variants = [
-            ("lower", canonical_headers_lower),
-            ("preserve", canonical_headers_preserve),
-        ]
-        separators = ["\n", "\r\n"]
-        scheme_hosts = [None]
-        if host_header:
-            scheme_hosts.extend([f"https://{host_header}", f"http://{host_header}"])
-
-        for method in methods:
-            for path in paths:
-                for scheme_host in scheme_hosts:
-                    path_value = f"{scheme_host}{path}" if scheme_host else path
-                    for body_text, body_label in ((body_canonical, "canonical"), (body_raw, "raw")):
-                        for header_label, headers_text in header_variants:
-                            for separator in separators:
-                                if query_string:
-                                    candidates.append(
-                                        (
-                                            f"{method}:{path_value}:q:{header_label}:{separator}:{body_label}",
-                                            build_canonical(
-                                                method=method,
-                                                path=path_value,
-                                                body_text=body_text,
-                                                use_query=True,
-                                                query_in_path=False,
-                                                headers_text=headers_text,
-                                                separator=separator,
-                                            ),
-                                        )
-                                    )
-                                    candidates.append(
-                                        (
-                                            f"{method}:{path_value}:noq:{header_label}:{separator}:{body_label}",
-                                            build_canonical(
-                                                method=method,
-                                                path=path_value,
-                                                body_text=body_text,
-                                                use_query=False,
-                                                query_in_path=False,
-                                                headers_text=headers_text,
-                                                separator=separator,
-                                            ),
-                                        )
-                                    )
-                                    candidates.append(
-                                        (
-                                            f"{method}:{path_value}:qpath:{header_label}:{separator}:{body_label}",
-                                            build_canonical(
-                                                method=method,
-                                                path=path_value,
-                                                body_text=body_text,
-                                                use_query=True,
-                                                query_in_path=True,
-                                                headers_text=headers_text,
-                                                separator=separator,
-                                            ),
-                                        )
-                                    )
-                                else:
-                                    candidates.append(
-                                        (
-                                            f"{method}:{path_value}:noq:{header_label}:{separator}:{body_label}",
-                                            build_canonical(
-                                                method=method,
-                                                path=path_value,
-                                                body_text=body_text,
-                                                use_query=False,
-                                                query_in_path=False,
-                                                headers_text=headers_text,
-                                                separator=separator,
-                                            ),
-                                        )
-                                    )
-
-        # Some providers sign only the body payload (no method/path/headers)
-        for body_text, body_label in ((body_canonical, "canonical"), (body_raw, "raw")):
-            if body_text:
-                candidates.append((f"body-only:{body_label}", body_text))
-
-        verified = False
-        matched = None
-
-        # Try official authorizer signer verification (same canonicalizer as Create Payment).
-        # NOTE: authorizer filters headers by keys that start with 'x-api-' (case-sensitive),
-        # so we must normalize to lowercase for those keys and keep 'Host' exact.
+        # Verify using the exact canonicalizer from authorizer.Signer (same as Create Payment).
+        # NOTE: Signer only includes headers that *start with* 'x-api-' (case-sensitive),
+        # so we must normalize those header keys to lowercase and keep 'Host' exact.
         authorizer_headers = {"Host": host_header}
         for key, value in request.headers.items():
             if key.lower().startswith("x-api-"):
                 authorizer_headers[key.lower()] = value
 
-        authorizer_payloads = [
-            (
-                f"authorizer:{request.path}",
-                {
-                    "http_method": request.method,
-                    "path": request.path,
-                    "headers": authorizer_headers,
-                    "query_string_parameters": query_params,
-                    "body": body,
-                },
-            )
-        ]
+        authorizer_payload = {
+            "http_method": request.method,
+            "path": request.path,
+            "headers": authorizer_headers,
+            "query_string_parameters": query_params or {},
+            "body": body,
+        }
 
-        for label, payload in authorizer_payloads:
-            if _verify_with_authorizer(payload, config.public_key_pem, signature):
-                verified = True
-                matched = label
-                break
-
-        if not verified:
-            for label, canonical in candidates:
-                if verify_signature(canonical, signature, config.public_key_pem):
-                    verified = True
-                    matched = label
-                    break
-
-        if verified and matched:
-            logger.info("Finik webhook signature verified using %s", matched)
-
-        if not verified:
+        verified = _verify_with_authorizer(authorizer_payload, config.public_key_pem, signature)
+        if verified:
+            logger.info("Finik webhook signature verified using authorizer.Signer")
+        else:
             logger.warning(
                 "Finik webhook signature mismatch: method=%s path=%s host=%s django_host=%s x_api_headers=%s body_keys=%s raw_body_len=%s",
                 request.method,
