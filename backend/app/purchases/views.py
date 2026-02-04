@@ -94,6 +94,12 @@ class FinikWebhookView(APIView):
     authentication_classes = []
 
     def post(self, request):
+        return self._handle(request)
+
+    def get(self, request):
+        return self._handle(request)
+
+    def _handle(self, request):
         config = get_config()
         if not config.public_key_pem:
             return Response({"detail": "Finik public key not configured"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -107,7 +113,7 @@ class FinikWebhookView(APIView):
             if key.lower().startswith("x-api-"):
                 headers[key] = value
 
-        query_params = {key: value for key, value in request.query_params.items()} if request.query_params else None
+        query_params = request.query_params.dict() if request.query_params else None
         body = request.data if isinstance(request.data, dict) else {}
         canonical = build_canonical_request(request.method, request.path, headers, query_params, body)
         if not verify_signature(canonical, signature, config.public_key_pem):
@@ -123,31 +129,33 @@ class FinikWebhookView(APIView):
             except ValueError:
                 return Response({"detail": "Invalid timestamp"}, status=status.HTTP_400_BAD_REQUEST)
 
+        payload = body or (query_params or {})
+
         purchase = None
-        purchase_id = request.query_params.get("purchase_id")
+        purchase_id = payload.get("purchase_id") or request.query_params.get("purchase_id")
         if purchase_id:
             purchase = Purchase.objects.filter(id=purchase_id).first()
 
         if not purchase:
-            payment_id = body.get("paymentId") or body.get("payment_id")
+            payment_id = payload.get("paymentId") or payload.get("payment_id")
             if payment_id:
                 purchase = Purchase.objects.filter(payment_id=payment_id).first()
 
         if not purchase:
-            fallback_id = body.get("transactionId") or body.get("id")
+            fallback_id = payload.get("transactionId") or payload.get("id")
             if fallback_id:
                 purchase = Purchase.objects.filter(payment_id=fallback_id).first() or Purchase.objects.filter(id=fallback_id).first()
 
         if not purchase:
             return Response({"detail": "Purchase not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        status_value = str(body.get("status", "")).upper()
+        status_value = str(payload.get("status", "")).upper()
         if status_value == "SUCCEEDED":
             purchase.status = "paid"
         elif status_value == "FAILED":
             purchase.status = "cancelled"
 
-        transaction_id = body.get("transactionId") or body.get("id")
+        transaction_id = payload.get("transactionId") or payload.get("id")
         if transaction_id:
             purchase.transaction_id = transaction_id
 
