@@ -166,7 +166,7 @@ class FinikWebhookView(APIView):
         raw_body = raw_bytes.decode("utf-8", errors="replace") if raw_bytes else ""
 
         query_params = request.query_params.dict() if request.query_params else None
-        body = request.body
+        body = raw_body
 
         x_api_headers = {k: v for k, v in headers.items() if k.lower().startswith("x-api-")}
         logger.warning(
