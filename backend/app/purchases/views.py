@@ -182,7 +182,7 @@ class FinikWebhookView(APIView):
             request.headers.get("Content-Type"),
             x_api_headers,
             query_params,
-            body[:800],
+            body,
         )
 
         # Verify using the exact canonicalizer from authorizer.Signer (same as Create Payment).
