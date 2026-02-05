@@ -80,9 +80,6 @@ class PurchaseViewSet(mixins.CreateModelMixin, mixins.RetrieveModelMixin, viewse
             webhook_url = config.webhook_url
             if "{purchase_id}" in webhook_url or "{payment_id}" in webhook_url:
                 webhook_url = webhook_url.format(purchase_id=purchase.id, payment_id=purchase.payment_id)
-            else:
-                separator = "&" if "?" in webhook_url else "?"
-                webhook_url = f"{webhook_url}{separator}purchase_id={purchase.id}"
             data["webhookUrl"] = webhook_url
 
         try:
