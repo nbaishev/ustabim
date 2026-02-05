@@ -3,12 +3,15 @@ import time
 import uuid
 import logging
 import requests
+from typing import Any, Dict, Optional
 from django.conf import settings
 from django.http import RawPostDataException
 from rest_framework import mixins, status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from authorizer import Signer
 
 from .models import Purchase
 from .serializers import PurchaseCreateSerializer, PurchaseSerializer
@@ -18,21 +21,23 @@ from .finik import create_payment, get_config
 logger = logging.getLogger(__name__)
 
 
-def _verify_with_authorizer(request_data, public_key_pem: str, signature: str) -> bool:
-    try:
-        from authorizer import Signer as AuthorizerSigner
-    except Exception:
-        return False
-
-    try:
-        signer = AuthorizerSigner(**request_data)
-    except Exception:
-        return False
-
-    try:
-        return signer.verify(public_key_pem, signature)
-    except Exception:
-        return False
+def _verify_with_authorizer(
+        http_method: str,
+        path: str,
+        headers: Dict[str, str],
+        query_params: Optional[Dict[str, Any]],
+        body: Optional[Dict[str, Any]],
+        public_key_pem: str,
+        signature: str
+) -> bool:
+    request_data = {
+        "http_method": http_method,
+        "path": path,
+        "headers": headers,
+        "query_string_parameters": query_params,
+        "body": body,
+    }
+    return Signer(**request_data).verify(public_key_pem, signature)
 
 
 class PurchaseViewSet(mixins.CreateModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
@@ -161,8 +166,7 @@ class FinikWebhookView(APIView):
         raw_body = raw_bytes.decode("utf-8", errors="replace") if raw_bytes else ""
 
         query_params = request.query_params.dict() if request.query_params else None
-        body = request.data if isinstance(request.data, dict) else {}
-        body = self._sorted_body(body)
+        body = request.body
 
         x_api_headers = {k: v for k, v in headers.items() if k.lower().startswith("x-api-")}
         logger.warning(
@@ -174,7 +178,7 @@ class FinikWebhookView(APIView):
             request.headers.get("Content-Type"),
             x_api_headers,
             query_params,
-            raw_body[:800],
+            body[:800],
         )
 
         # Verify using the exact canonicalizer from authorizer.Signer (same as Create Payment).
@@ -185,15 +189,15 @@ class FinikWebhookView(APIView):
             if key.lower().startswith("x-api-"):
                 authorizer_headers[key.lower()] = value
 
-        authorizer_payload = {
-            "http_method": request.method,
-            "path": request.path,
-            "headers": authorizer_headers,
-            "query_string_parameters": query_params or {},
-            "body": body,
-        }
+        verified = _verify_with_authorizer(
+            request.method,
+            request.path,
+            authorizer_headers,
+            query_params,
+            body,
+            config.public_key_pem,
+            signature)
 
-        verified = _verify_with_authorizer(authorizer_payload, config.public_key_pem, signature)
         if verified:
             logger.info("Finik webhook signature verified using authorizer.Signer")
         else:
