@@ -1,6 +1,7 @@
 import os
 import time
 import uuid
+import json
 import logging
 import requests
 from typing import Any, Dict, Optional
@@ -166,7 +167,10 @@ class FinikWebhookView(APIView):
         raw_body = raw_bytes.decode("utf-8", errors="replace") if raw_bytes else ""
 
         query_params = request.query_params.dict() if request.query_params else None
-        body = raw_body
+        try:
+            body = json.loads(raw_body) if raw_body else {}
+        except json.JSONDecodeError:
+            body = {}
 
         x_api_headers = {k: v for k, v in headers.items() if k.lower().startswith("x-api-")}
         logger.warning(
@@ -189,14 +193,20 @@ class FinikWebhookView(APIView):
             if key.lower().startswith("x-api-"):
                 authorizer_headers[key.lower()] = value
 
-        verified = _verify_with_authorizer(
-            request.method,
-            request.path,
-            authorizer_headers,
-            query_params,
-            body,
-            config.public_key_pem,
-            signature)
+        signer = Signer(
+            headers=authorizer_headers,
+            http_method=request.method,
+            path=request.path,
+            body=body,
+            query_string_parameters=query_params or {},
+        )
+        try:
+            canonical = signer._get_data()
+            logger.warning("Finik webhook canonical (authorizer): %s", canonical[:2000])
+        except Exception:
+            logger.warning("Finik webhook canonical (authorizer): failed to build")
+
+        verified = signer.verify(config.public_key_pem, signature)
 
         if verified:
             logger.info("Finik webhook signature verified using authorizer.Signer")
