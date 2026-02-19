@@ -79,7 +79,7 @@ class CourseViewSet(viewsets.ReadOnlyModelViewSet):
                 return Response({"detail": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
             if not user_has_course_access(request.user, course):
                 return Response({"detail": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
-        serializer = CourseContentSerializer(course)
+        serializer = CourseContentSerializer(course, context={"request": request})
         return Response(serializer.data)
 
 

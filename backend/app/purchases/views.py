@@ -54,7 +54,7 @@ class PurchaseViewSet(mixins.CreateModelMixin, mixins.RetrieveModelMixin, viewse
         serializer.is_valid(raise_exception=True)
         purchase = serializer.save()
         if purchase.status == "paid":
-            output = PurchaseSerializer(purchase).data
+            output = self.get_serializer(purchase).data
             return Response(output, status=status.HTTP_201_CREATED)
 
         config = get_config()
@@ -110,7 +110,7 @@ class PurchaseViewSet(mixins.CreateModelMixin, mixins.RetrieveModelMixin, viewse
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        output = PurchaseSerializer(purchase).data
+        output = self.get_serializer(purchase).data
         return Response({**output, "payment_url": payment_url}, status=status.HTTP_201_CREATED)
 
 

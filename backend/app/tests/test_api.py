@@ -77,6 +77,20 @@ class CourseAccessTests(APITestCase):
         response = self.client.get(url, **auth_headers(self.user))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    def test_course_content_returns_current_price_with_individual_discount(self):
+        Purchase.objects.create(user=self.user, course=self.paid_course, status="paid")
+        UserCourseDiscount.objects.create(
+            user_email=self.user.email,
+            course=self.paid_course,
+            percent_off=20,
+        )
+
+        url = reverse("course-content", kwargs={"id": self.paid_course.id})
+        response = self.client.get(url, **auth_headers(self.user))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["current_price"], 800)
+
 
 class AdminCourseTests(APITestCase):
     def setUp(self):
@@ -138,4 +152,19 @@ class IndividualDiscountTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["amount"], 0)
         self.assertEqual(response.data["status"], "paid")
+        self.assertEqual(response.data["course"]["current_price"], 0)
 
+    def test_me_courses_returns_current_price_with_individual_discount(self):
+        Purchase.objects.create(user=self.user, course=self.course, status="paid")
+        UserCourseDiscount.objects.create(
+            user_email="winner@example.com",
+            course=self.course,
+            percent_off=30,
+        )
+
+        url = reverse("me-courses")
+        response = self.client.get(url, **auth_headers(self.user))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        course_data = next(item for item in response.data if item["id"] == self.course.id)
+        self.assertEqual(course_data["current_price"], 700)

@@ -158,5 +158,5 @@ class MyCoursesView(APIView):
         courses_qs = Course.objects.filter(
             models.Q(is_free=True) | models.Q(id__in=purchased_ids)
         )
-        serializer = CourseBriefSerializer(courses_qs, many=True)
+        serializer = CourseBriefSerializer(courses_qs, many=True, context={"request": request})
         return Response(serializer.data)
