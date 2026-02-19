@@ -25,3 +25,31 @@ class Purchase(models.Model):
 
     def __str__(self):
         return f"{self.user.email} -> {self.course_id} ({self.status})"
+
+
+class UserCourseDiscount(models.Model):
+    user_email = models.EmailField()
+    course = models.ForeignKey("courses.Course", related_name="user_discounts", on_delete=models.CASCADE)
+    percent_off = models.PositiveSmallIntegerField(blank=True, null=True)
+    amount_off = models.PositiveIntegerField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    expires_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user_email", "course")
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user_email} -> {self.course_id}"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        has_percent = self.percent_off is not None
+        has_amount = self.amount_off is not None
+        if has_percent == has_amount:
+            raise ValidationError("Exactly one of percent_off or amount_off must be set")
+
+        if self.percent_off is not None and not (1 <= self.percent_off <= 100):
+            raise ValidationError("percent_off must be in range 1..100")
