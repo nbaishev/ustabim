@@ -14,6 +14,7 @@
   - `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS`, `DJANGO_CORS_ALLOWED_ORIGINS`
   - `VITE_API_BASE_URL`
   - параметры Google OAuth (`GOOGLE_*`, `VITE_GOOGLE_*`)
+  - параметры Finik (`FINIK_*`), особенно `FINIK_QR_EXPIRES_MINUTES`
 
 ## Локальный запуск (Docker)
 1. Подготовьте конфиг:
@@ -56,6 +57,36 @@ docker compose -f docker-compose.local.yml exec frontend npm run build
    docker compose exec web python manage.py collectstatic --noinput
    docker compose exec web python manage.py createsuperuser
    ```
+
+## Обновление проекта на боевом сервере
+Типовая последовательность при выкладке новой версии:
+
+1. Подключитесь к серверу и перейдите в директорию проекта.
+2. Обновите код из git.
+3. Пересоберите фронтенд (с актуальными `VITE_*` из `.env`).
+4. Пересоберите и перезапустите контейнеры приложения.
+5. Примените миграции и проверьте состояние сервисов.
+
+Команды:
+```sh
+ssh <user>@<server>
+cd /path/to/ustabim
+
+git checkout main
+git pull --ff-only origin main
+
+./scripts/build_frontend.sh .env
+docker compose up -d --build web nginx
+docker compose exec web python manage.py migrate
+docker compose exec web python manage.py collectstatic --noinput
+docker compose ps
+docker compose logs --tail=100 web nginx
+```
+
+Если обновлялись только переменные окружения в `.env`, достаточно:
+```sh
+docker compose up -d web nginx
+```
 
 ### SSL (certbot)
 Сервис `certbot` получает сертификаты через webroot. Убедитесь, что:

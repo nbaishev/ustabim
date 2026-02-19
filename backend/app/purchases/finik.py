@@ -30,6 +30,7 @@ class FinikConfig:
     merchant_category_code: str
     qr_name: str
     webhook_url: Optional[str]
+    qr_expires_minutes: int
     timeout_seconds: int
 
 
@@ -85,6 +86,7 @@ def get_config() -> FinikConfig:
         merchant_category_code=getattr(settings, "FINIK_MERCHANT_CATEGORY_CODE", _env("FINIK_MCC", "")) or "",
         qr_name=getattr(settings, "FINIK_QR_NAME", _env("FINIK_QR_NAME", "")) or "",
         webhook_url=getattr(settings, "FINIK_WEBHOOK_URL", _env("FINIK_WEBHOOK_URL")),
+        qr_expires_minutes=int(getattr(settings, "FINIK_QR_EXPIRES_MINUTES", _env("FINIK_QR_EXPIRES_MINUTES", "30"))),
         timeout_seconds=int(getattr(settings, "FINIK_TIMEOUT_SECONDS", _env("FINIK_TIMEOUT_SECONDS", "15"))),
     )
 

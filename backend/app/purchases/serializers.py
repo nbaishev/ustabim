@@ -17,6 +17,7 @@ class PurchaseSerializer(serializers.ModelSerializer):
 
 class PurchaseCreateSerializer(serializers.Serializer):
     course_id = serializers.CharField()
+    qr_expires_minutes = serializers.IntegerField(required=False, min_value=1, max_value=1440)
 
     def validate_course_id(self, value):
         from courses.models import Course

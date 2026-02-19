@@ -2,6 +2,7 @@ from django.conf import settings
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 from django.db import models
+from django.db.models import Count
 import requests
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -157,6 +158,9 @@ class MyCoursesView(APIView):
 
         courses_qs = Course.objects.filter(
             models.Q(is_free=True) | models.Q(id__in=purchased_ids)
+        ).annotate(
+            lessons_count=Count("modules__lessons", distinct=True),
+            modules_count=Count("modules", distinct=True),
         )
         serializer = CourseBriefSerializer(courses_qs, many=True, context={"request": request})
         return Response(serializer.data)

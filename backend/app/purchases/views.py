@@ -20,6 +20,8 @@ from .finik import create_payment, get_config
 
 
 logger = logging.getLogger(__name__)
+MIN_QR_EXPIRES_MINUTES = 1
+MAX_QR_EXPIRES_MINUTES = 1440
 
 
 def _verify_with_authorizer(
@@ -65,16 +67,28 @@ class PurchaseViewSet(mixins.CreateModelMixin, mixins.RetrieveModelMixin, viewse
             return Response({"detail": "Finik credentials are not configured"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         if not config.account_id or not config.merchant_category_code:
             return Response({"detail": "Finik merchant details are not configured"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        qr_expires_minutes = serializer.validated_data.get("qr_expires_minutes", config.qr_expires_minutes)
+        if qr_expires_minutes < MIN_QR_EXPIRES_MINUTES or qr_expires_minutes > MAX_QR_EXPIRES_MINUTES:
+            return Response(
+                {
+                    "detail": "QR expiration period must be between 1 and 1440 minutes",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         if not serializer.context.get("purchase_created") and purchase.status != "paid":
             purchase.payment_id = uuid.uuid4()
             purchase.save(update_fields=["payment_id"])
 
+        start_date = int(time.time() * 1000)
+        end_date = start_date + (qr_expires_minutes * 60 * 1000)
         data = {
             "accountId": config.account_id,
             "merchantCategoryCode": config.merchant_category_code,
             "name_en": config.qr_name or purchase.course.title,
             "description": purchase.course.title,
+            "startDate": start_date,
+            "endDate": end_date,
         }
         if config.webhook_url:
             webhook_url = config.webhook_url
