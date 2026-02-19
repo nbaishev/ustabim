@@ -57,6 +57,20 @@ class CourseAccessTests(APITestCase):
         response = self.client.get(url, **auth_headers(self.user))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+
+    def test_course_detail_returns_current_price_with_individual_discount(self):
+        UserCourseDiscount.objects.create(
+            user_email=self.user.email,
+            course=self.paid_course,
+            percent_off=20,
+        )
+        url = reverse("course-detail", kwargs={"id": self.paid_course.id})
+        response = self.client.get(url, **auth_headers(self.user))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["price"], 1000)
+        self.assertEqual(response.data["current_price"], 800)
+
     def test_paid_course_allowed_after_purchase(self):
         Purchase.objects.create(user=self.user, course=self.paid_course, status="paid")
         url = reverse("course-content", kwargs={"id": self.paid_course.id})
