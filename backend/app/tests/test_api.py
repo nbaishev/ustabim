@@ -5,7 +5,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from users.models import User
 from courses.models import Course, Module, Lesson
-from purchases.models import Purchase
+from purchases.models import Purchase, UserCourseDiscount
 
 
 def auth_headers(user):
@@ -96,4 +96,32 @@ class AdminCourseTests(APITestCase):
         }
         response = self.client.post(url, data, **auth_headers(self.user))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+
+class IndividualDiscountTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(email="winner@example.com", password="pass", name="Winner")
+        self.course = Course.objects.create(
+            id="discount-course",
+            title="Discount Course",
+            description="Paid",
+            full_description="Paid",
+            is_free=False,
+            price=1000,
+            level="Средний",
+        )
+
+    def test_full_individual_discount_marks_purchase_paid(self):
+        UserCourseDiscount.objects.create(
+            user_email="winner@example.com",
+            course=self.course,
+            percent_off=100,
+        )
+        url = reverse("purchase-list")
+        response = self.client.post(url, {"course_id": self.course.id}, format="json", **auth_headers(self.user))
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["amount"], 0)
+        self.assertEqual(response.data["status"], "paid")
 
