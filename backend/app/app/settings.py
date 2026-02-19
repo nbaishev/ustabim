@@ -109,11 +109,11 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "/static/"
-# Source static files (e.g. legal docs) live under /app/app/static
-STATICFILES_DIRS = [BASE_DIR / "static"]
-# Храним статику/медиа на верхнем уровне проекта (/app/static, /app/media),
-# чтобы их можно было монтировать в контейнеры nginx/web.
-STATIC_ROOT = BASE_DIR.parent / "static"
+# Source static files (e.g. legal docs) live in backend/static
+# and are copied into the image as /app/static.
+STATICFILES_DIRS = [BASE_DIR.parent / "static"]
+# Keep collectstatic output separate from source static files.
+STATIC_ROOT = BASE_DIR.parent / "staticfiles"
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR.parent / "media"
