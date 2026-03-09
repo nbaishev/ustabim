@@ -1,9 +1,9 @@
-from django.utils import timezone
 from rest_framework import serializers
 
 from courses.serializers import CourseBriefSerializer
 
-from .models import Purchase, UserCourseDiscount
+from .models import Purchase
+from .pricing import get_course_price_breakdown
 
 
 class PurchaseSerializer(serializers.ModelSerializer):
@@ -37,40 +37,12 @@ class PurchaseCreateSerializer(serializers.Serializer):
         self.context["course"] = course
         return value
 
-    @staticmethod
-    def _get_individual_discounted_amount(user_email: str, course, base_amount: int) -> int:
-        discount = (
-            UserCourseDiscount.objects
-            .filter(user_email__iexact=user_email, course=course, is_active=True)
-            .filter(expires_at__isnull=True)
-            .order_by("-created_at")
-            .first()
-        )
-        if discount is None:
-            discount = (
-                UserCourseDiscount.objects
-                .filter(user_email__iexact=user_email, course=course, is_active=True, expires_at__gt=timezone.now())
-                .order_by("-created_at")
-                .first()
-            )
-
-        if discount is None:
-            return base_amount
-
-        if discount.percent_off is not None:
-            amount = base_amount - int(base_amount * discount.percent_off / 100)
-        else:
-            amount = base_amount - int(discount.amount_off or 0)
-
-        return max(amount, 0)
-
     def create(self, validated_data):
         user = self.context["request"].user
         course = self.context["course"]
 
-        amount = int(course.effective_price)
-        if not course.is_free:
-            amount = self._get_individual_discounted_amount(user.email, course, amount)
+        breakdown = get_course_price_breakdown(user=user, course=course)
+        amount = breakdown.final_price
 
         defaults = {
             "status": "paid" if course.is_free or amount == 0 else "pending",

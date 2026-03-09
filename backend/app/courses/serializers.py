@@ -1,7 +1,6 @@
-from django.apps import apps
-from django.utils import timezone
 from rest_framework import serializers
 from .models import Course, Module, Lesson
+from purchases.pricing import get_course_price_breakdown
 
 
 class LessonPublicSerializer(serializers.ModelSerializer):
@@ -34,36 +33,10 @@ class ModuleSerializer(serializers.ModelSerializer):
 
 class CoursePriceMixin:
     def get_current_price(self, obj):
-        base_price = int(obj.effective_price)
         request = self.context.get("request")
         user = getattr(request, "user", None)
-        if not user or not getattr(user, "is_authenticated", False) or obj.is_free:
-            return base_price
-
-        UserCourseDiscount = apps.get_model("purchases", "UserCourseDiscount")
-        discount = (
-            UserCourseDiscount.objects
-            .filter(user_email__iexact=user.email, course=obj, is_active=True)
-            .filter(expires_at__isnull=True)
-            .order_by("-created_at")
-            .first()
-        )
-        if discount is None:
-            discount = (
-                UserCourseDiscount.objects
-                .filter(user_email__iexact=user.email, course=obj, is_active=True, expires_at__gt=timezone.now())
-                .order_by("-created_at")
-                .first()
-            )
-
-        if discount is None:
-            return base_price
-
-        if discount.percent_off is not None:
-            amount = base_price - int(base_price * discount.percent_off / 100)
-        else:
-            amount = base_price - int(discount.amount_off or 0)
-        return max(amount, 0)
+        breakdown = get_course_price_breakdown(user=user, course=obj)
+        return breakdown.final_price
 
 
 class CourseBriefSerializer(CoursePriceMixin, serializers.ModelSerializer):

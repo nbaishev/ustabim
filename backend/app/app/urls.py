@@ -12,6 +12,13 @@ from courses.views import CourseViewSet, AdminCourseViewSet, StatsView
 from purchases.views import PurchaseViewSet, FinikWebhookView
 from users.views import GoogleLoginView, LogoutView, MeView, MyCoursesView
 from progress.views import ProgressListView, ProgressCompleteView, ProgressViewView, ModeratorCourseCompletionView
+from entrance_tests.views import (
+    EntranceQuizStatusView,
+    EntranceQuizStartView,
+    EntranceQuizSubmitView,
+    FreeCourseBenefitStatusView,
+    FreeCourseBenefitClaimView,
+)
 from rest_framework_simplejwt.views import TokenRefreshView
 
 router = DefaultRouter()
@@ -30,6 +37,31 @@ urlpatterns = [
     path("api/me/progress/", ProgressListView.as_view(), name="me-progress"),
     path("api/me/progress/complete/", ProgressCompleteView.as_view(), name="me-progress-complete"),
     path("api/me/progress/view/", ProgressViewView.as_view(), name="me-progress-view"),
+    path(
+        "api/entrance-test/courses/<str:course_id>/status/",
+        EntranceQuizStatusView.as_view(),
+        name="entrance-test-status",
+    ),
+    path(
+        "api/entrance-test/courses/<str:course_id>/start/",
+        EntranceQuizStartView.as_view(),
+        name="entrance-test-start",
+    ),
+    path(
+        "api/entrance-test/attempts/<uuid:attempt_id>/submit/",
+        EntranceQuizSubmitView.as_view(),
+        name="entrance-test-submit",
+    ),
+    path(
+        "api/free-course-benefits/courses/<str:course_id>/status/",
+        FreeCourseBenefitStatusView.as_view(),
+        name="free-course-benefit-status",
+    ),
+    path(
+        "api/free-course-benefits/courses/<str:course_id>/claim/",
+        FreeCourseBenefitClaimView.as_view(),
+        name="free-course-benefit-claim",
+    ),
     path(
         "api/moderator/course-completions/",
         ModeratorCourseCompletionView.as_view(),
