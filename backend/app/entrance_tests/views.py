@@ -5,13 +5,21 @@ from rest_framework.views import APIView
 
 from courses.models import Course
 
-from .models import EntranceQuizAttempt
-from .serializers import EntranceQuizSubmitSerializer, FreeCourseBenefitClaimSerializer
+from .models import EntranceQuizAttempt, EntranceQuizGlobalAttempt
+from .serializers import (
+    EntranceQuizActionSerializer,
+    EntranceQuizSubmitSerializer,
+    FreeCourseBenefitClaimSerializer,
+)
 from .services import (
+    claim_entrance_quiz_benefit,
     claim_free_course_completion_benefit,
     get_free_course_benefit_status,
+    get_unified_quiz_status,
     get_quiz_status,
     start_attempt,
+    start_global_attempt,
+    submit_global_attempt,
     submit_attempt,
 )
 
@@ -81,6 +89,87 @@ class EntranceQuizSubmitView(APIView):
             }
 
         return Response(response_payload)
+
+
+class EntranceQuizUnifiedView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        status_data = get_unified_quiz_status(request.user)
+        return Response(
+            {
+                "can_start": status_data.can_start,
+                "attempts_used": status_data.attempts_used,
+                "attempts_left": status_data.attempts_left,
+                "max_attempts": status_data.max_attempts,
+                "pass_score": status_data.pass_score,
+                "has_passed": status_data.has_passed,
+                "can_claim": status_data.can_claim,
+                "already_claimed": status_data.already_claimed,
+                "claimed_target_course": (
+                    {
+                        "id": status_data.claimed_target_course.id,
+                        "title": status_data.claimed_target_course.title,
+                    }
+                    if status_data.claimed_target_course
+                    else None
+                ),
+            }
+        )
+
+    def post(self, request):
+        serializer = EntranceQuizActionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        action = serializer.validated_data["action"]
+
+        if action == "start":
+            started = start_global_attempt(request.user)
+            attempt = started["attempt"]
+            return Response(
+                {
+                    "action": "start",
+                    "attempt_id": str(attempt.id),
+                    "attempt_no": attempt.attempt_no,
+                    "questions": started["questions"],
+                }
+            )
+
+        if action == "submit":
+            attempt = get_object_or_404(
+                EntranceQuizGlobalAttempt,
+                id=serializer.validated_data["attempt_id"],
+                user=request.user,
+            )
+            result = submit_global_attempt(attempt, serializer.validated_data.get("answers", []))
+            return Response(
+                {
+                    "action": "submit",
+                    "passed": result["attempt"].passed,
+                    "score_percent": result["attempt"].score_percent,
+                    "correct_count": result["attempt"].correct_count,
+                    "total_questions": result["total_questions"],
+                    "attempts_left": result["attempts_left"],
+                }
+            )
+
+        target_course = get_object_or_404(Course, id=serializer.validated_data["target_course_id"])
+        claim, reward = claim_entrance_quiz_benefit(request.user, target_course)
+        return Response(
+            {
+                "action": "claim",
+                "claim_id": str(claim.id),
+                "target_course": {
+                    "id": target_course.id,
+                    "title": target_course.title,
+                },
+                "reward": {
+                    "id": str(reward.id),
+                    "percent_off": reward.percent_off,
+                    "expires_at": reward.expires_at,
+                    "is_active": reward.is_active,
+                },
+            }
+        )
 
 
 class FreeCourseBenefitStatusView(APIView):

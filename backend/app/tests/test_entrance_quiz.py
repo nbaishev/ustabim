@@ -11,7 +11,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from courses.models import Course
 from entrance_tests.models import (
-    EntranceQuizAttempt,
+    EntranceQuizGlobalAttempt,
     EntranceQuizConfig,
     EntranceQuizOption,
     EntranceQuizQuestion,
@@ -56,11 +56,11 @@ class EntranceQuizFlowTests(APITestCase):
         EntranceQuizOption.objects.create(question=q2, text="Wrong 2", is_correct=False, order=2)
 
     def _start_attempt(self):
-        url = reverse("entrance-test-start", kwargs={"course_id": self.course.id})
-        return self.client.post(url, {}, format="json", **auth_headers(self.user))
+        url = reverse("entrance-test-unified")
+        return self.client.post(url, {"action": "start"}, format="json", **auth_headers(self.user))
 
     def _submit_attempt(self, attempt_id, use_correct_answers: bool):
-        attempt = EntranceQuizAttempt.objects.get(id=attempt_id)
+        attempt = EntranceQuizGlobalAttempt.objects.get(id=attempt_id)
         answers = []
         for question_id in attempt.question_ids:
             question = EntranceQuizQuestion.objects.get(id=question_id)
@@ -70,8 +70,22 @@ class EntranceQuizFlowTests(APITestCase):
                 option_id = question.options.filter(is_correct=False).order_by("id").first().id
             answers.append({"question_id": question_id, "option_id": option_id})
 
-        submit_url = reverse("entrance-test-submit", kwargs={"attempt_id": attempt_id})
-        return self.client.post(submit_url, {"answers": answers}, format="json", **auth_headers(self.user))
+        submit_url = reverse("entrance-test-unified")
+        return self.client.post(
+            submit_url,
+            {"action": "submit", "attempt_id": str(attempt_id), "answers": answers},
+            format="json",
+            **auth_headers(self.user),
+        )
+
+    def _claim_discount(self):
+        url = reverse("entrance-test-unified")
+        return self.client.post(
+            url,
+            {"action": "claim", "target_course_id": self.course.id},
+            format="json",
+            **auth_headers(self.user),
+        )
 
     def _purchase_course(self):
         finik_config = SimpleNamespace(
@@ -119,7 +133,14 @@ class EntranceQuizFlowTests(APITestCase):
         self.assertEqual(submit.status_code, status.HTTP_200_OK)
         self.assertTrue(submit.data["passed"])
 
-        reward = EntranceQuizReward.objects.get(user=self.user, course=self.course)
+        claim = self._claim_discount()
+        self.assertEqual(claim.status_code, status.HTTP_200_OK)
+
+        reward = EntranceQuizReward.objects.get(
+            user=self.user,
+            course=self.course,
+            reward_kind=EntranceQuizReward.KIND_ENTRANCE_QUIZ,
+        )
         self.assertEqual(reward.percent_off, 50)
         ttl_hours = (reward.expires_at - timezone.now()).total_seconds() / 3600
         self.assertGreater(ttl_hours, 71)
@@ -131,7 +152,6 @@ class EntranceQuizFlowTests(APITestCase):
 
         self.assertEqual(submit.status_code, status.HTTP_200_OK)
         self.assertFalse(submit.data["passed"])
-        self.assertIsNone(submit.data["reward"])
         self.assertFalse(EntranceQuizReward.objects.filter(user=self.user, course=self.course).exists())
 
     def test_status_returns_attempts_and_active_reward(self):
@@ -139,16 +159,16 @@ class EntranceQuizFlowTests(APITestCase):
         submit = self._submit_attempt(start.data["attempt_id"], use_correct_answers=True)
         self.assertEqual(submit.status_code, status.HTTP_200_OK)
 
-        status_url = reverse("entrance-test-status", kwargs={"course_id": self.course.id})
+        status_url = reverse("entrance-test-unified")
         response = self.client.get(status_url, **auth_headers(self.user))
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["attempts_used"], 1)
         self.assertEqual(response.data["attempts_left"], 1)
         self.assertEqual(response.data["pass_score"], 70)
-        self.assertTrue(response.data["has_active_reward"])
+        self.assertTrue(response.data["has_passed"])
         self.assertFalse(response.data["can_start"])
-        self.assertEqual(response.data["discounted_price"], 500)
+        self.assertTrue(response.data["can_claim"])
 
     def test_active_reward_keeps_more_profitable_platform_discount(self):
         EntranceQuizReward.objects.create(
@@ -157,6 +177,7 @@ class EntranceQuizFlowTests(APITestCase):
             percent_off=50,
             expires_at=timezone.now() + timedelta(hours=72),
             is_active=True,
+            reward_kind=EntranceQuizReward.KIND_ENTRANCE_QUIZ,
         )
         UserCourseDiscount.objects.create(
             user_email=self.user.email,
@@ -181,6 +202,7 @@ class EntranceQuizFlowTests(APITestCase):
             percent_off=50,
             expires_at=timezone.now() - timedelta(minutes=1),
             is_active=True,
+            reward_kind=EntranceQuizReward.KIND_ENTRANCE_QUIZ,
         )
 
         detail_url = reverse("course-detail", kwargs={"id": self.course.id})
@@ -202,6 +224,7 @@ class EntranceQuizFlowTests(APITestCase):
             percent_off=50,
             expires_at=timezone.now() + timedelta(hours=72),
             is_active=True,
+            reward_kind=EntranceQuizReward.KIND_ENTRANCE_QUIZ,
         )
 
         detail_url = reverse("course-detail", kwargs={"id": self.course.id})

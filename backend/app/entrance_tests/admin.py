@@ -2,7 +2,9 @@ from django.contrib import admin
 
 from .models import (
     EntranceQuizAttempt,
+    EntranceQuizBenefitClaim,
     EntranceQuizConfig,
+    EntranceQuizGlobalAttempt,
     EntranceQuizOption,
     EntranceQuizQuestion,
     EntranceQuizReward,
@@ -117,3 +119,36 @@ class FreeCourseCompletionBenefitClaimAdmin(admin.ModelAdmin):
     list_display = ("user", "source_course", "target_course", "reward", "created_at")
     list_filter = ("source_course", "target_course")
     search_fields = ("user__email", "source_course__title", "target_course__title")
+
+
+@admin.register(EntranceQuizGlobalAttempt)
+class EntranceQuizGlobalAttemptAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "user",
+        "attempt_no",
+        "score_percent",
+        "passed",
+        "started_at",
+        "submitted_at",
+    )
+    list_filter = ("passed",)
+    search_fields = ("user__email",)
+    readonly_fields = (
+        "id",
+        "user",
+        "attempt_no",
+        "question_ids",
+        "selected_answers",
+        "correct_count",
+        "score_percent",
+        "passed",
+        "started_at",
+        "submitted_at",
+    )
+
+
+@admin.register(EntranceQuizBenefitClaim)
+class EntranceQuizBenefitClaimAdmin(admin.ModelAdmin):
+    list_display = ("user", "target_course", "reward", "created_at")
+    search_fields = ("user__email", "target_course__title")

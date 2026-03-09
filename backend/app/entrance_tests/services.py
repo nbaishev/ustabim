@@ -14,7 +14,9 @@ from purchases.models import Purchase
 
 from .models import (
     EntranceQuizAttempt,
+    EntranceQuizBenefitClaim,
     EntranceQuizConfig,
+    EntranceQuizGlobalAttempt,
     EntranceQuizQuestion,
     EntranceQuizReward,
     FreeCourseCompletionBenefitClaim,
@@ -55,6 +57,19 @@ class FreeCourseBenefitStatus:
     can_claim: bool
     claimed_target_course: Course | None
     reward_expires_at: Any
+
+
+@dataclass
+class EntranceQuizUnifiedStatus:
+    can_start: bool
+    attempts_used: int
+    attempts_left: int
+    max_attempts: int
+    pass_score: int
+    has_passed: bool
+    can_claim: bool
+    already_claimed: bool
+    claimed_target_course: Course | None
 
 
 def _require_paid_course(course: Course):
@@ -124,6 +139,32 @@ def _build_questions_payload(questions):
     return payload
 
 
+def _global_attempts_queryset(user):
+    return EntranceQuizGlobalAttempt.objects.filter(user=user)
+
+
+def _evaluate_attempt_answers(question_ids: list[int], answers: list[dict[str, int]]):
+    questions = list(
+        EntranceQuizQuestion.objects
+        .filter(id__in=question_ids)
+        .prefetch_related("options")
+    )
+    questions_map = {question.id: question for question in questions}
+    provided_map = {int(item["question_id"]): int(item["option_id"]) for item in answers}
+
+    correct_count = 0
+    for question_id in question_ids:
+        question = questions_map.get(question_id)
+        if not question:
+            continue
+        correct_option = next((opt for opt in question.options.all() if opt.is_correct), None)
+        selected_option_id = provided_map.get(question_id)
+        if correct_option and selected_option_id == correct_option.id:
+            correct_count += 1
+
+    return correct_count, provided_map
+
+
 def get_active_reward(user, course):
     now = timezone.now()
     return (
@@ -132,6 +173,142 @@ def get_active_reward(user, course):
         .order_by("-created_at")
         .first()
     )
+
+
+def get_unified_quiz_status(user) -> EntranceQuizUnifiedStatus:
+    config = EntranceQuizConfig.get_solo()
+    attempts_used = _global_attempts_queryset(user).count()
+    attempts_left = max(config.max_attempts - attempts_used, 0)
+    has_passed = _global_attempts_queryset(user).filter(passed=True).exists()
+    claim = (
+        EntranceQuizBenefitClaim.objects
+        .filter(user=user)
+        .select_related("target_course")
+        .first()
+    )
+    already_claimed = claim is not None
+    can_claim = bool(has_passed and not already_claimed)
+    can_start = bool(config.is_active and attempts_left > 0 and not has_passed)
+
+    return EntranceQuizUnifiedStatus(
+        can_start=can_start,
+        attempts_used=attempts_used,
+        attempts_left=attempts_left,
+        max_attempts=config.max_attempts,
+        pass_score=config.pass_score,
+        has_passed=has_passed,
+        can_claim=can_claim,
+        already_claimed=already_claimed,
+        claimed_target_course=claim.target_course if claim else None,
+    )
+
+
+@transaction.atomic
+def start_global_attempt(user):
+    config = EntranceQuizConfig.get_solo()
+    if not config.is_active:
+        raise ValidationError("Entrance test is currently disabled")
+
+    status = get_unified_quiz_status(user)
+    if status.has_passed:
+        raise ValidationError("Entrance test already passed")
+    if status.attempts_left <= 0:
+        raise ValidationError("Attempt limit reached")
+
+    questions = list(_get_active_questions())
+    payload = _build_questions_payload(questions)
+    if not payload:
+        raise ValidationError("Entrance test questions are not configured")
+
+    next_attempt_no = status.attempts_used + 1
+    attempt = EntranceQuizGlobalAttempt.objects.create(
+        user=user,
+        attempt_no=next_attempt_no,
+        question_ids=[q["id"] for q in payload],
+    )
+    return {
+        "attempt": attempt,
+        "questions": payload,
+    }
+
+
+@transaction.atomic
+def submit_global_attempt(attempt: EntranceQuizGlobalAttempt, answers: list[dict[str, int]]):
+    if attempt.submitted_at is not None:
+        raise ValidationError("Attempt is already submitted")
+
+    config = EntranceQuizConfig.get_solo()
+    question_ids = [int(qid) for qid in (attempt.question_ids or [])]
+    if not question_ids:
+        raise ValidationError("Attempt has no questions")
+
+    correct_count, provided_map = _evaluate_attempt_answers(question_ids, answers)
+    total_questions = len(question_ids)
+    score_percent = int((correct_count / total_questions) * 100) if total_questions else 0
+    passed = score_percent >= config.pass_score
+
+    attempt.selected_answers = {str(k): v for k, v in provided_map.items() if k in question_ids}
+    attempt.correct_count = correct_count
+    attempt.score_percent = score_percent
+    attempt.passed = passed
+    attempt.submitted_at = timezone.now()
+    attempt.save(
+        update_fields=[
+            "selected_answers",
+            "correct_count",
+            "score_percent",
+            "passed",
+            "submitted_at",
+        ]
+    )
+
+    attempts_used = _global_attempts_queryset(attempt.user).count()
+    attempts_left = max(config.max_attempts - attempts_used, 0)
+    return {
+        "attempt": attempt,
+        "total_questions": total_questions,
+        "attempts_left": attempts_left,
+    }
+
+
+@transaction.atomic
+def claim_entrance_quiz_benefit(user, target_course: Course):
+    if target_course.is_free:
+        raise ValidationError("Target course must be paid")
+    if not target_course.price or target_course.price <= 0:
+        raise ValidationError("Target course price is not set")
+
+    has_passed = _global_attempts_queryset(user).filter(passed=True).exists()
+    if not has_passed:
+        raise ValidationError("Entrance test must be passed first")
+
+    existing_claim = EntranceQuizBenefitClaim.objects.filter(user=user).first()
+    if existing_claim:
+        raise ValidationError("Entrance test discount has already been claimed")
+
+    already_paid = Purchase.objects.filter(user=user, course=target_course, status="paid").exists()
+    if already_paid:
+        raise ValidationError("Target course is already purchased")
+
+    config = EntranceQuizConfig.get_solo()
+    now = timezone.now()
+    expires_at = now + timedelta(hours=config.reward_ttl_hours)
+    reward = EntranceQuizReward.objects.create(
+        user=user,
+        course=target_course,
+        percent_off=config.discount_percent,
+        expires_at=expires_at,
+        is_active=True,
+        reward_kind=EntranceQuizReward.KIND_ENTRANCE_QUIZ,
+        source_course=None,
+        granted_by_attempt=None,
+    )
+    claim = EntranceQuizBenefitClaim.objects.create(
+        user=user,
+        target_course=target_course,
+        reward=reward,
+    )
+    return claim, reward
 
 
 def get_quiz_status(user, course: Course) -> EntranceQuizStatus:
@@ -201,24 +378,7 @@ def submit_attempt(attempt: EntranceQuizAttempt, answers: list[dict[str, int]]) 
     if not question_ids:
         raise ValidationError("Attempt has no questions")
 
-    questions = list(
-        EntranceQuizQuestion.objects
-        .filter(id__in=question_ids)
-        .prefetch_related("options")
-    )
-    questions_map = {question.id: question for question in questions}
-
-    provided_map = {int(item["question_id"]): int(item["option_id"]) for item in answers}
-
-    correct_count = 0
-    for question_id in question_ids:
-        question = questions_map.get(question_id)
-        if not question:
-            continue
-        correct_option = next((opt for opt in question.options.all() if opt.is_correct), None)
-        selected_option_id = provided_map.get(question_id)
-        if correct_option and selected_option_id == correct_option.id:
-            correct_count += 1
+    correct_count, provided_map = _evaluate_attempt_answers(question_ids, answers)
 
     total_questions = len(question_ids)
     score_percent = int((correct_count / total_questions) * 100) if total_questions else 0
@@ -246,6 +406,7 @@ def submit_attempt(attempt: EntranceQuizAttempt, answers: list[dict[str, int]]) 
         reward, created = EntranceQuizReward.objects.get_or_create(
             user=attempt.user,
             course=attempt.course,
+            reward_kind=EntranceQuizReward.KIND_ENTRANCE_QUIZ,
             defaults={
                 "percent_off": config.discount_percent,
                 "expires_at": expires_at,
@@ -361,14 +522,6 @@ def claim_free_course_completion_benefit(user, source_course: Course, target_cou
         raise ValidationError("Target course is already purchased")
 
     now = timezone.now()
-    active_target_reward = (
-        EntranceQuizReward.objects
-        .filter(user=user, course=target_course, is_active=True, expires_at__gt=now)
-        .order_by("-created_at")
-        .first()
-    )
-    if active_target_reward:
-        raise ValidationError("Target course already has an active discount reward")
 
     expires_at = (
         now + timedelta(hours=config.reward_ttl_hours)
@@ -379,6 +532,7 @@ def claim_free_course_completion_benefit(user, source_course: Course, target_cou
     reward, created = EntranceQuizReward.objects.get_or_create(
         user=user,
         course=target_course,
+        reward_kind=EntranceQuizReward.KIND_FREE_COURSE_COMPLETION,
         defaults={
             "percent_off": config.percent_off,
             "expires_at": expires_at,

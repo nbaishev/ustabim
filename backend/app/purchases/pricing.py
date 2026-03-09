@@ -59,16 +59,15 @@ def get_platform_price(user, course) -> int:
     return _apply_individual_discount(base_price, discount)
 
 
-def get_active_course_reward(user, course):
+def get_active_course_rewards(user, course):
     if not user or not getattr(user, "is_authenticated", False):
-        return None
+        return []
 
     now = timezone.now()
-    return (
+    return list(
         EntranceQuizReward.objects
         .filter(user=user, course=course, is_active=True, expires_at__gt=now)
         .order_by("-created_at")
-        .first()
     )
 
 
@@ -92,8 +91,13 @@ def get_entrance_reward_price(course, reward: EntranceQuizReward | None) -> int 
 
 def get_course_price_breakdown(user, course) -> CoursePriceBreakdown:
     platform_price = get_platform_price(user=user, course=course)
-    reward = get_active_course_reward(user=user, course=course)
-    reward_price = get_entrance_reward_price(course=course, reward=reward)
+    rewards = get_active_course_rewards(user=user, course=course)
+    combined_percent_off = min(sum(int(reward.percent_off) for reward in rewards), 100)
+    reward_price = (
+        get_entrance_price_for_percent(course=course, percent_off=combined_percent_off)
+        if combined_percent_off > 0
+        else None
+    )
 
     final_price = platform_price
     if reward_price is not None:
@@ -103,10 +107,11 @@ def get_course_price_breakdown(user, course) -> CoursePriceBreakdown:
         platform_price=platform_price,
         reward_price=reward_price,
         final_price=max(final_price, 0),
-        active_reward=reward,
+        active_reward=rewards[0] if rewards else None,
     )
 
 
 def get_active_entrance_reward(user, course):
     # Backward compatible alias for existing code paths.
-    return get_active_course_reward(user=user, course=course)
+    rewards = get_active_course_rewards(user=user, course=course)
+    return rewards[0] if rewards else None

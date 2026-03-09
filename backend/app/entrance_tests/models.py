@@ -148,7 +148,7 @@ class EntranceQuizReward(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ("user", "course")
+        unique_together = ("user", "course", "reward_kind")
         ordering = ["-created_at"]
 
     def __str__(self):
@@ -166,11 +166,58 @@ class EntranceQuizReward(models.Model):
             and self.source_course is None
         ):
             raise ValidationError("source_course is required for free_course_completion reward")
-        if (
-            self.reward_kind == self.KIND_ENTRANCE_QUIZ
-            and self.granted_by_attempt is None
-        ):
-            raise ValidationError("granted_by_attempt is required for entrance_quiz reward")
+
+
+class EntranceQuizGlobalAttempt(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="entrance_quiz_global_attempts",
+        on_delete=models.CASCADE,
+    )
+    attempt_no = models.PositiveSmallIntegerField()
+    question_ids = models.JSONField(default=list, blank=True)
+    selected_answers = models.JSONField(default=dict, blank=True)
+    correct_count = models.PositiveIntegerField(default=0)
+    score_percent = models.PositiveSmallIntegerField(default=0)
+    passed = models.BooleanField(default=False)
+    started_at = models.DateTimeField(auto_now_add=True)
+    submitted_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        unique_together = ("user", "attempt_no")
+        ordering = ["-started_at"]
+
+    def __str__(self):
+        return f"{self.user_id} / global attempt {self.attempt_no}"
+
+
+class EntranceQuizBenefitClaim(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        related_name="entrance_quiz_benefit_claim",
+        on_delete=models.CASCADE,
+    )
+    target_course = models.ForeignKey(
+        "courses.Course",
+        related_name="entrance_quiz_benefit_claims",
+        on_delete=models.CASCADE,
+    )
+    reward = models.ForeignKey(
+        EntranceQuizReward,
+        related_name="entrance_quiz_claims",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user_id} -> {self.target_course_id}"
 
 
 class FreeCourseCompletionBenefitConfig(models.Model):

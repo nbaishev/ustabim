@@ -9,6 +9,10 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from courses.models import Course, Lesson, Module
 from entrance_tests.models import (
+    EntranceQuizConfig,
+    EntranceQuizGlobalAttempt,
+    EntranceQuizOption,
+    EntranceQuizQuestion,
     EntranceQuizReward,
     FreeCourseCompletionBenefitClaim,
     FreeCourseCompletionBenefitConfig,
@@ -73,6 +77,17 @@ class FreeCourseBenefitTests(APITestCase):
             is_active=True,
         )
 
+        EntranceQuizConfig.objects.create(
+            pass_score=70,
+            max_attempts=2,
+            discount_percent=50,
+            reward_ttl_hours=72,
+            is_active=True,
+        )
+        q1 = EntranceQuizQuestion.objects.create(text="Q1", order=1, is_active=True)
+        EntranceQuizOption.objects.create(question=q1, text="Correct", is_correct=True, order=1)
+        EntranceQuizOption.objects.create(question=q1, text="Wrong", is_correct=False, order=2)
+
     def _complete_source_course(self):
         url = reverse("me-progress-complete")
         for lesson in (self.source_lesson_1, self.source_lesson_2):
@@ -96,6 +111,35 @@ class FreeCourseBenefitTests(APITestCase):
             format="json",
             **auth_headers(self.user),
         )
+
+    def _claim_entrance_quiz_discount(self, target_course_id: str):
+        url = reverse("entrance-test-unified")
+        started = self.client.post(url, {"action": "start"}, format="json", **auth_headers(self.user))
+        self.assertEqual(started.status_code, status.HTTP_200_OK)
+
+        attempt = EntranceQuizGlobalAttempt.objects.get(id=started.data["attempt_id"])
+        answers = []
+        for question_id in attempt.question_ids:
+            question = EntranceQuizQuestion.objects.get(id=question_id)
+            option_id = question.options.get(is_correct=True).id
+            answers.append({"question_id": question_id, "option_id": option_id})
+
+        submitted = self.client.post(
+            url,
+            {"action": "submit", "attempt_id": str(attempt.id), "answers": answers},
+            format="json",
+            **auth_headers(self.user),
+        )
+        self.assertEqual(submitted.status_code, status.HTTP_200_OK)
+        self.assertTrue(submitted.data["passed"])
+
+        claimed = self.client.post(
+            url,
+            {"action": "claim", "target_course_id": target_course_id},
+            format="json",
+            **auth_headers(self.user),
+        )
+        self.assertEqual(claimed.status_code, status.HTTP_200_OK)
 
     def _purchase_target(self):
         finik_config = SimpleNamespace(
@@ -152,7 +196,11 @@ class FreeCourseBenefitTests(APITestCase):
         claim_response = self._claim_benefit(self.target_course.id)
         self.assertEqual(claim_response.status_code, status.HTTP_200_OK)
 
-        reward = EntranceQuizReward.objects.get(user=self.user, course=self.target_course)
+        reward = EntranceQuizReward.objects.get(
+            user=self.user,
+            course=self.target_course,
+            reward_kind=EntranceQuizReward.KIND_FREE_COURSE_COMPLETION,
+        )
         self.assertEqual(reward.percent_off, 10)
         self.assertEqual(reward.reward_kind, EntranceQuizReward.KIND_FREE_COURSE_COMPLETION)
         self.assertEqual(reward.source_course_id, self.source_course.id)
@@ -188,3 +236,22 @@ class FreeCourseBenefitTests(APITestCase):
         response = self._claim_benefit(self.source_course.id)
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_free_and_entrance_rewards_stack_to_60_percent(self):
+        self._claim_entrance_quiz_discount(self.target_course.id)
+        self._complete_source_course()
+
+        claim_response = self._claim_benefit(self.target_course.id)
+        self.assertEqual(claim_response.status_code, status.HTTP_200_OK)
+
+        rewards = EntranceQuizReward.objects.filter(user=self.user, course=self.target_course, is_active=True)
+        self.assertEqual(rewards.count(), 2)
+
+        detail_url = reverse("course-detail", kwargs={"id": self.target_course.id})
+        detail_response = self.client.get(detail_url, **auth_headers(self.user))
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(detail_response.data["current_price"], 400)
+
+        purchase_response = self._purchase_target()
+        self.assertEqual(purchase_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(purchase_response.data["amount"], 400)
