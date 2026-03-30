@@ -7,6 +7,7 @@ import requests
 from typing import Any, Dict, Optional
 from django.conf import settings
 from django.http import RawPostDataException
+from django.shortcuts import get_object_or_404
 from rest_framework import mixins, status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -14,9 +15,17 @@ from rest_framework.views import APIView
 
 from authorizer import Signer
 
+from core.permissions import IsModeratorOrAdmin
+from courses.models import Course
 from .models import Purchase
-from .serializers import PurchaseCreateSerializer, PurchaseSerializer
+from .serializers import (
+    ModeratorCourseAccessGrantCreateSerializer,
+    ModeratorCourseAccessGrantResponseSerializer,
+    PurchaseCreateSerializer,
+    PurchaseSerializer,
+)
 from .finik import create_payment, get_config
+from users.models import User
 
 
 logger = logging.getLogger(__name__)
@@ -276,3 +285,60 @@ class FinikWebhookView(APIView):
 
         purchase.save(update_fields=["status", "transaction_id"])
         return Response({"ok": True}, status=status.HTTP_200_OK)
+
+
+class ModeratorCourseAccessGrantView(APIView):
+    permission_classes = [IsModeratorOrAdmin]
+
+    def post(self, request):
+        serializer = ModeratorCourseAccessGrantCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = get_object_or_404(
+            User.objects.filter(role="user"),
+            pk=serializer.validated_data["user_id"],
+        )
+        course = get_object_or_404(Course, id=serializer.validated_data["course_id"])
+
+        if course.is_free:
+            return Response(
+                {"detail": "Only paid courses can be granted"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not course.published:
+            return Response(
+                {"detail": "Only published courses can be granted"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        purchase = Purchase.objects.filter(user=user, course=course).first()
+        access_created = False
+
+        if purchase is None:
+            purchase = Purchase.objects.create(
+                user=user,
+                course=course,
+                status="paid",
+                amount=0,
+            )
+            access_created = True
+        elif purchase.status != "paid":
+            purchase.status = "paid"
+            purchase.amount = 0
+            purchase.save(update_fields=["status", "amount"])
+            access_created = True
+
+        response_serializer = ModeratorCourseAccessGrantResponseSerializer(
+            {
+                "created": access_created,
+                "purchase": purchase,
+                "user": user,
+                "course": course,
+            },
+            context={"request": request},
+        )
+        return Response(
+            response_serializer.data,
+            status=status.HTTP_201_CREATED if access_created else status.HTTP_200_OK,
+        )

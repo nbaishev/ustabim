@@ -249,3 +249,218 @@ class ModeratorCourseCompletionTests(APITestCase):
             **auth_headers(self.user_partial),
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class ModeratorUserSearchTests(APITestCase):
+    def setUp(self):
+        self.moderator = User.objects.create_user(
+            email="mod-search@example.com",
+            password="pass",
+            name="Mod Search",
+            role="moderator",
+        )
+        self.user_by_email = User.objects.create_user(
+            email="student.alpha@example.com",
+            password="pass",
+            name="Alpha Student",
+        )
+        self.user_by_name = User.objects.create_user(
+            email="bravo@example.com",
+            password="pass",
+            name="Bravo Learner",
+        )
+        User.objects.create_user(
+            email="mod-match@example.com",
+            password="pass",
+            name="Bravo Moderator",
+            role="moderator",
+        )
+
+    def test_moderator_can_search_users_by_email_and_name(self):
+        url = reverse("moderator-user-search")
+
+        response_by_email = self.client.get(
+            url,
+            {"search": "student.alpha"},
+            **auth_headers(self.moderator),
+        )
+        self.assertEqual(response_by_email.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response_by_email.data), 1)
+        self.assertEqual(response_by_email.data[0]["email"], self.user_by_email.email)
+
+        response_by_name = self.client.get(
+            url,
+            {"search": "Bravo"},
+            **auth_headers(self.moderator),
+        )
+        self.assertEqual(response_by_name.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response_by_name.data), 1)
+        self.assertEqual(response_by_name.data[0]["email"], self.user_by_name.email)
+
+    def test_regular_user_cannot_search_users(self):
+        url = reverse("moderator-user-search")
+        response = self.client.get(
+            url,
+            {"search": "student"},
+            **auth_headers(self.user_by_email),
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class ModeratorCourseAccessGrantTests(APITestCase):
+    def setUp(self):
+        self.moderator = User.objects.create_user(
+            email="mod-grant@example.com",
+            password="pass",
+            name="Mod Grant",
+            role="moderator",
+        )
+        self.regular_user = User.objects.create_user(
+            email="regular@example.com",
+            password="pass",
+            name="Regular User",
+        )
+        self.student = User.objects.create_user(
+            email="student.grant@example.com",
+            password="pass",
+            name="Student Grant",
+        )
+
+        self.paid_course = Course.objects.create(
+            id="grant-paid-course",
+            title="Grant Paid Course",
+            description="Desc",
+            full_description="Full",
+            is_free=False,
+            published=True,
+            price=1500,
+            level="Начинающий",
+        )
+        paid_module = Module.objects.create(course=self.paid_course, title="Main", order=1)
+        Lesson.objects.create(
+            module=paid_module,
+            title="Lesson 1",
+            video_url="https://example.com/grant-paid",
+            order=1,
+        )
+
+        self.free_course = Course.objects.create(
+            id="grant-free-course",
+            title="Grant Free Course",
+            description="Desc",
+            full_description="Full",
+            is_free=True,
+            published=True,
+            level="Начинающий",
+        )
+
+        self.unpublished_course = Course.objects.create(
+            id="grant-hidden-course",
+            title="Grant Hidden Course",
+            description="Desc",
+            full_description="Full",
+            is_free=False,
+            published=False,
+            price=2000,
+            level="Средний",
+        )
+
+    def test_moderator_can_grant_paid_course_access(self):
+        content_url = reverse("course-content", kwargs={"id": self.paid_course.id})
+        before_response = self.client.get(content_url, **auth_headers(self.student))
+        self.assertEqual(before_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        grant_url = reverse("moderator-course-access-grants")
+        grant_response = self.client.post(
+            grant_url,
+            {"user_id": self.student.id, "course_id": self.paid_course.id},
+            format="json",
+            **auth_headers(self.moderator),
+        )
+
+        self.assertEqual(grant_response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(grant_response.data["created"])
+        self.assertEqual(grant_response.data["user"]["email"], self.student.email)
+        self.assertEqual(grant_response.data["course"]["id"], self.paid_course.id)
+        self.assertEqual(grant_response.data["purchase"]["status"], "paid")
+
+        purchase = Purchase.objects.get(user=self.student, course=self.paid_course)
+        self.assertEqual(purchase.status, "paid")
+        self.assertEqual(purchase.amount, 0)
+
+        my_courses_url = reverse("me-courses")
+        my_courses_response = self.client.get(my_courses_url, **auth_headers(self.student))
+        self.assertEqual(my_courses_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(any(course["id"] == self.paid_course.id for course in my_courses_response.data))
+
+        after_response = self.client.get(content_url, **auth_headers(self.student))
+        self.assertEqual(after_response.status_code, status.HTTP_200_OK)
+
+    def test_repeated_grant_is_idempotent(self):
+        grant_url = reverse("moderator-course-access-grants")
+        self.client.post(
+            grant_url,
+            {"user_id": self.student.id, "course_id": self.paid_course.id},
+            format="json",
+            **auth_headers(self.moderator),
+        )
+
+        second_response = self.client.post(
+            grant_url,
+            {"user_id": self.student.id, "course_id": self.paid_course.id},
+            format="json",
+            **auth_headers(self.moderator),
+        )
+
+        self.assertEqual(second_response.status_code, status.HTTP_200_OK)
+        self.assertFalse(second_response.data["created"])
+        self.assertEqual(
+            Purchase.objects.filter(user=self.student, course=self.paid_course).count(),
+            1,
+        )
+
+    def test_grant_rejects_free_or_unpublished_course(self):
+        url = reverse("moderator-course-access-grants")
+
+        free_response = self.client.post(
+            url,
+            {"user_id": self.student.id, "course_id": self.free_course.id},
+            format="json",
+            **auth_headers(self.moderator),
+        )
+        self.assertEqual(free_response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        unpublished_response = self.client.post(
+            url,
+            {"user_id": self.student.id, "course_id": self.unpublished_course.id},
+            format="json",
+            **auth_headers(self.moderator),
+        )
+        self.assertEqual(unpublished_response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_regular_user_cannot_grant_course_access(self):
+        url = reverse("moderator-course-access-grants")
+        response = self.client.post(
+            url,
+            {"user_id": self.student.id, "course_id": self.paid_course.id},
+            format="json",
+            **auth_headers(self.regular_user),
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class PublicStatsTests(APITestCase):
+    def test_guest_can_fetch_total_users(self):
+        User.objects.create_user(email="public1@example.com", password="pass", name="Public 1")
+        User.objects.create_user(
+            email="public2@example.com",
+            password="pass",
+            name="Public 2",
+            role="moderator",
+        )
+
+        url = reverse("public-stats")
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["total_users"], 2)

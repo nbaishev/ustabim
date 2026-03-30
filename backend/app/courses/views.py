@@ -177,3 +177,14 @@ class StatsView(APIView):
                 "most_popular_courses": popular_data,
             }
         )
+
+
+class PublicStatsView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response(
+            {
+                "total_users": User.objects.count(),
+            }
+        )

@@ -8,9 +8,9 @@ from drf_spectacular.views import (
 )
 from rest_framework.permissions import IsAdminUser
 from rest_framework.routers import DefaultRouter
-from courses.views import CourseViewSet, AdminCourseViewSet, StatsView
-from purchases.views import PurchaseViewSet, FinikWebhookView
-from users.views import GoogleLoginView, LogoutView, MeView, MyCoursesView
+from courses.views import CourseViewSet, AdminCourseViewSet, PublicStatsView, StatsView
+from purchases.views import PurchaseViewSet, FinikWebhookView, ModeratorCourseAccessGrantView
+from users.views import GoogleLoginView, LogoutView, MeView, ModeratorUserSearchView, MyCoursesView
 from progress.views import ProgressListView, ProgressCompleteView, ProgressViewView, ModeratorCourseCompletionView
 from entrance_tests.views import (
     EntranceQuizUnifiedView,
@@ -51,6 +51,13 @@ urlpatterns = [
         ModeratorCourseCompletionView.as_view(),
         name="moderator-course-completions",
     ),
+    path("api/moderator/users/", ModeratorUserSearchView.as_view(), name="moderator-user-search"),
+    path(
+        "api/moderator/course-access/grants/",
+        ModeratorCourseAccessGrantView.as_view(),
+        name="moderator-course-access-grants",
+    ),
+    path("api/public/stats/", PublicStatsView.as_view(), name="public-stats"),
     path("api/moderator/stats/", StatsView.as_view(), name="moderator-stats"),
     path("api/payments/finik/webhook/", FinikWebhookView.as_view(), name="finik-webhook"),
 ]

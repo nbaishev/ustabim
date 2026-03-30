@@ -11,8 +11,13 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from allauth.socialaccount.models import SocialAccount, SocialApp
 
+from core.permissions import IsModeratorOrAdmin
 from .models import User, GoogleOAuthConfig
-from .serializers import UserSerializer
+from .serializers import ModeratorUserSummarySerializer, UserSerializer
+
+
+DEFAULT_MODERATOR_USER_SEARCH_LIMIT = 10
+MAX_MODERATOR_USER_SEARCH_LIMIT = 50
 
 
 class GoogleLoginView(APIView):
@@ -163,4 +168,27 @@ class MyCoursesView(APIView):
             modules_count=Count("modules", distinct=True),
         )
         serializer = CourseBriefSerializer(courses_qs, many=True, context={"request": request})
+        return Response(serializer.data)
+
+
+class ModeratorUserSearchView(APIView):
+    permission_classes = [IsModeratorOrAdmin]
+
+    def get(self, request):
+        search = (request.query_params.get("search") or "").strip()
+        if len(search) < 2:
+            return Response([])
+
+        try:
+            limit = int(request.query_params.get("limit", DEFAULT_MODERATOR_USER_SEARCH_LIMIT))
+        except (TypeError, ValueError):
+            limit = DEFAULT_MODERATOR_USER_SEARCH_LIMIT
+        limit = max(1, min(limit, MAX_MODERATOR_USER_SEARCH_LIMIT))
+
+        users = (
+            User.objects.filter(role="user")
+            .filter(models.Q(email__icontains=search) | models.Q(name__icontains=search))
+            .order_by("name", "email")[:limit]
+        )
+        serializer = ModeratorUserSummarySerializer(users, many=True)
         return Response(serializer.data)

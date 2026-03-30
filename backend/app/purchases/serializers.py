@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from courses.serializers import CourseBriefSerializer
+from users.serializers import ModeratorUserSummarySerializer
 
 from .models import Purchase
 from .pricing import get_course_price_breakdown
@@ -62,3 +63,15 @@ class PurchaseCreateSerializer(serializers.Serializer):
             if updates:
                 purchase.save(update_fields=updates)
         return purchase
+
+
+class ModeratorCourseAccessGrantCreateSerializer(serializers.Serializer):
+    user_id = serializers.CharField()
+    course_id = serializers.CharField()
+
+
+class ModeratorCourseAccessGrantResponseSerializer(serializers.Serializer):
+    created = serializers.BooleanField(read_only=True)
+    purchase = PurchaseSerializer(read_only=True)
+    user = ModeratorUserSummarySerializer(read_only=True)
+    course = CourseBriefSerializer(read_only=True)
