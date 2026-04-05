@@ -57,6 +57,8 @@ class CourseBriefSerializer(CoursePriceMixin, serializers.ModelSerializer):
             "discount_price",
             "current_price",
             "preview_image",
+            "delivery_mode",
+            "mentor_telegram_username",
             "is_featured",
             "lessons_count",
             "modules_count",
@@ -89,6 +91,8 @@ class CourseSerializer(CoursePriceMixin, serializers.ModelSerializer):
             "current_price",
             "preview_image",
             "background_video_url",
+            "delivery_mode",
+            "mentor_telegram_username",
             "seo_title",
             "seo_description",
             "is_featured",
@@ -134,6 +138,8 @@ class CourseWriteSerializer(serializers.ModelSerializer):
             "discount_price",
             "preview_image",
             "background_video_url",
+            "delivery_mode",
+            "mentor_telegram_username",
             "seo_title",
             "seo_description",
             "is_featured",
@@ -148,6 +154,17 @@ class CourseWriteSerializer(serializers.ModelSerializer):
         is_free = attrs.get("is_free", getattr(instance, "is_free", False))
         price = attrs.get("price", getattr(instance, "price", None))
         discount_price = attrs.get("discount_price", getattr(instance, "discount_price", None))
+        delivery_mode = attrs.get("delivery_mode", getattr(instance, "delivery_mode", "online"))
+        mentor_telegram_username = attrs.get(
+            "mentor_telegram_username",
+            getattr(instance, "mentor_telegram_username", None),
+        )
+
+        if mentor_telegram_username is not None:
+            mentor_telegram_username = Course.normalize_mentor_telegram_username(
+                mentor_telegram_username
+            )
+            attrs["mentor_telegram_username"] = mentor_telegram_username
 
         if not is_free:
             if not price or price <= 0:
@@ -159,4 +176,8 @@ class CourseWriteSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Discount price must be greater than 0")
             if discount_price >= price:
                 raise serializers.ValidationError("Discount price must be lower than regular price")
+        if delivery_mode == "offline" and not mentor_telegram_username:
+            raise serializers.ValidationError(
+                {"mentor_telegram_username": "Telegram username is required for offline courses"}
+            )
         return attrs

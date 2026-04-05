@@ -47,6 +47,18 @@ class CourseAccessTests(APITestCase):
         paid_module = Module.objects.create(course=self.paid_course, title="Mod1", order=1)
         Lesson.objects.create(module=paid_module, title="Lesson1", video_url="https://example.com", order=1)
 
+        self.offline_course = Course.objects.create(
+            id="offline-course",
+            title="Offline Course",
+            description="Offline",
+            full_description="Offline",
+            is_free=False,
+            price=2000,
+            level="Средний",
+            delivery_mode="offline",
+            mentor_telegram_username="mentor_offline",
+        )
+
     def test_free_course_content_accessible(self):
         url = reverse("course-content", kwargs={"id": self.free_course.id})
         response = self.client.get(url, **auth_headers(self.user))
@@ -78,6 +90,20 @@ class CourseAccessTests(APITestCase):
         response = self.client.get(url, **auth_headers(self.user))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    def test_paid_offline_course_denied_without_purchase(self):
+        url = reverse("course-content", kwargs={"id": self.offline_course.id})
+        response = self.client.get(url, **auth_headers(self.user))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_paid_offline_course_allowed_after_purchase(self):
+        Purchase.objects.create(user=self.user, course=self.offline_course, status="paid")
+        url = reverse("course-content", kwargs={"id": self.offline_course.id})
+        response = self.client.get(url, **auth_headers(self.user))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["delivery_mode"], "offline")
+        self.assertEqual(response.data["mentor_telegram_username"], "mentor_offline")
+
     def test_course_content_returns_current_price_with_individual_discount(self):
         Purchase.objects.create(user=self.user, course=self.paid_course, status="paid")
         UserCourseDiscount.objects.create(
@@ -94,6 +120,7 @@ class CourseAccessTests(APITestCase):
 
     def test_me_courses_returns_lessons_and_modules_counts(self):
         Purchase.objects.create(user=self.user, course=self.paid_course, status="paid")
+        Purchase.objects.create(user=self.user, course=self.offline_course, status="paid")
 
         url = reverse("me-courses")
         response = self.client.get(url, **auth_headers(self.user))
@@ -104,6 +131,16 @@ class CourseAccessTests(APITestCase):
         self.assertEqual(by_id[self.free_course.id]["modules_count"], 1)
         self.assertEqual(by_id[self.paid_course.id]["lessons_count"], 1)
         self.assertEqual(by_id[self.paid_course.id]["modules_count"], 1)
+        self.assertEqual(by_id[self.offline_course.id]["delivery_mode"], "offline")
+        self.assertEqual(by_id[self.offline_course.id]["mentor_telegram_username"], "mentor_offline")
+
+    def test_course_detail_returns_delivery_mode_fields(self):
+        url = reverse("course-detail", kwargs={"id": self.offline_course.id})
+        response = self.client.get(url, **auth_headers(self.user))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["delivery_mode"], "offline")
+        self.assertEqual(response.data["mentor_telegram_username"], "mentor_offline")
 
 
 class AdminCourseTests(APITestCase):
@@ -112,9 +149,18 @@ class AdminCourseTests(APITestCase):
             email="mod@example.com", password="pass", name="Mod", role="moderator"
         )
         self.user = User.objects.create_user(email="user2@example.com", password="pass", name="User")
+        self.course = Course.objects.create(
+            id="editable-course",
+            title="Editable Course",
+            description="Desc",
+            full_description="Full",
+            is_free=False,
+            price=1500,
+            level="Начинающий",
+        )
 
     def test_moderator_can_create_course(self):
-        url = reverse("admin-course-list")
+        url = reverse("moderator-course-list")
         data = {
             "id": "new-course",
             "title": "New Course",
@@ -125,9 +171,62 @@ class AdminCourseTests(APITestCase):
         }
         response = self.client.post(url, data, **auth_headers(self.moderator))
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["delivery_mode"], "online")
+        self.assertIsNone(response.data["mentor_telegram_username"])
+
+    def test_moderator_can_create_offline_course_with_mentor_username(self):
+        url = reverse("moderator-course-list")
+        data = {
+            "id": "offline-admin-course",
+            "title": "Offline Admin Course",
+            "description": "Desc",
+            "full_description": "Full",
+            "is_free": False,
+            "price": 2500,
+            "level": "Средний",
+            "delivery_mode": "offline",
+            "mentor_telegram_username": "@mentor_admin",
+        }
+
+        response = self.client.post(url, data, format="json", **auth_headers(self.moderator))
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["delivery_mode"], "offline")
+        self.assertEqual(response.data["mentor_telegram_username"], "mentor_admin")
+
+    def test_moderator_can_update_course_to_offline(self):
+        url = reverse("moderator-course-detail", kwargs={"id": self.course.id})
+        data = {
+            "delivery_mode": "offline",
+            "mentor_telegram_username": "@mentor_updated",
+        }
+
+        response = self.client.patch(url, data, format="json", **auth_headers(self.moderator))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["delivery_mode"], "offline")
+        self.assertEqual(response.data["mentor_telegram_username"], "mentor_updated")
+
+    def test_offline_course_requires_mentor_username(self):
+        url = reverse("moderator-course-list")
+        data = {
+            "id": "offline-without-mentor",
+            "title": "Offline Without Mentor",
+            "description": "Desc",
+            "full_description": "Full",
+            "is_free": False,
+            "price": 1200,
+            "level": "Средний",
+            "delivery_mode": "offline",
+        }
+
+        response = self.client.post(url, data, format="json", **auth_headers(self.moderator))
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("mentor_telegram_username", response.data)
 
     def test_regular_user_cannot_create_course(self):
-        url = reverse("admin-course-list")
+        url = reverse("moderator-course-list")
         data = {
             "id": "fail-course",
             "title": "New Course",

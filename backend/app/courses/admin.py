@@ -14,9 +14,20 @@ class ModuleInline(admin.TabularInline):
 
 @admin.register(Course)
 class CourseAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "level", "is_free", "published", "price", "discount_price", "is_featured")
+    list_display = (
+        "id",
+        "title",
+        "level",
+        "delivery_mode",
+        "mentor_telegram_username",
+        "is_free",
+        "published",
+        "price",
+        "discount_price",
+        "is_featured",
+    )
     search_fields = ("title", "description", "full_description")
-    list_filter = ("level", "is_free", "published", "is_featured")
+    list_filter = ("level", "delivery_mode", "is_free", "published", "is_featured")
     prepopulated_fields = {"id": ("title",)}
     inlines = [ModuleInline]
 
