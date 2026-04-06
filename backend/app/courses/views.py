@@ -90,12 +90,17 @@ class AdminCourseViewSet(viewsets.ModelViewSet):
     serializer_class = CourseSerializer
 
     def get_queryset(self):
-        return super().get_queryset().annotate(
+        qs = super().get_queryset()
+        if getattr(self, "action", None) == "retrieve":
+            qs = qs.prefetch_related("modules__lessons")
+        return qs.annotate(
             lessons_count=Count("modules__lessons", distinct=True),
             modules_count=Count("modules", distinct=True),
         )
 
     def get_serializer_class(self):
+        if self.action == "retrieve":
+            return CourseContentSerializer
         if self.action in ("create", "update", "partial_update"):
             return CourseWriteSerializer
         return CourseSerializer

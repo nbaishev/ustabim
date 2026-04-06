@@ -100,7 +100,7 @@ class Lesson(models.Model):
     module = models.ForeignKey(Module, related_name="lessons", on_delete=models.CASCADE)
     title = models.CharField(max_length=255)
     video_url = models.URLField()
-    additional_materials = models.URLField(blank=True, null=True)
+    additional_materials = models.TextField(blank=True, null=True)
     order = models.PositiveIntegerField(default=1)
     duration = models.CharField(max_length=50, blank=True)
 
