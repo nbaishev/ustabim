@@ -49,7 +49,7 @@ COURSES = [
         "full_description": "Углублённый курс по архитектурному проектированию. Изучите сложные формы, адаптивные компоненты, работу с фасадами и создание детальной документации для строительства.",
         "is_free": False,
         "level": "Средний",
-        "price": 4990,
+        "price": 57,
         "preview_image": None,
         "is_featured": True,
         "modules": [
@@ -77,7 +77,7 @@ COURSES = [
         "full_description": "Полный курс по проектированию инженерных систем в Revit MEP. Охватывает вентиляцию, кондиционирование, водоснабжение, канализацию и электрические системы.",
         "is_free": False,
         "level": "Средний",
-        "price": 5990,
+        "price": 68,
         "preview_image": None,
         "is_featured": True,
         "modules": [
@@ -97,7 +97,7 @@ COURSES = [
         "full_description": "Изучите проектирование железобетонных и металлических конструкций, армирование, создание рабочей документации для строительства.",
         "is_free": False,
         "level": "Средний",
-        "price": 4490,
+        "price": 51,
         "preview_image": None,
         "is_featured": False,
         "modules": [
@@ -116,7 +116,7 @@ COURSES = [
         "full_description": "Научитесь создавать собственные параметрические семейства для любых задач. От простых элементов до сложных адаптивных компонентов.",
         "is_free": False,
         "level": "Продвинутый",
-        "price": 6990,
+        "price": 80,
         "preview_image": None,
         "is_featured": False,
         "modules": [
@@ -135,7 +135,7 @@ COURSES = [
         "full_description": "Освойте Dynamo для автоматизации рутинных задач, генеративного дизайна и работы с данными в Revit проектах.",
         "is_free": False,
         "level": "Продвинутый",
-        "price": 7490,
+        "price": 86,
         "preview_image": None,
         "is_featured": False,
         "modules": [

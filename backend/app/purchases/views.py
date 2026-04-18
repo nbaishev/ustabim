@@ -24,7 +24,7 @@ from .serializers import (
     PurchaseCreateSerializer,
     PurchaseSerializer,
 )
-from .finik import create_payment, get_config
+from .finik import convert_usd_to_kgs_amount, create_payment, get_config
 from users.models import User
 
 
@@ -107,7 +107,7 @@ class PurchaseViewSet(mixins.CreateModelMixin, mixins.RetrieveModelMixin, viewse
 
         try:
             response = create_payment(
-                amount=purchase.amount,
+                amount=convert_usd_to_kgs_amount(purchase.amount),
                 payment_id=str(purchase.payment_id),
                 redirect_url=redirect_url,
                 data=data,

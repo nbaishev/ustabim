@@ -3,6 +3,7 @@ import json
 import os
 import time
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import quote, urljoin
@@ -17,6 +18,7 @@ import logging
 
 
 logger = logging.getLogger(__name__)
+USD_TO_KGS_RATE = Decimal("87.5")
 
 
 @dataclass(frozen=True)
@@ -89,6 +91,13 @@ def get_config() -> FinikConfig:
         qr_expires_minutes=int(getattr(settings, "FINIK_QR_EXPIRES_MINUTES", _env("FINIK_QR_EXPIRES_MINUTES", "30"))),
         timeout_seconds=int(getattr(settings, "FINIK_TIMEOUT_SECONDS", _env("FINIK_TIMEOUT_SECONDS", "15"))),
     )
+
+
+def convert_usd_to_kgs_amount(amount_usd: int) -> int:
+    if amount_usd <= 0:
+        return 0
+    converted = Decimal(amount_usd) * USD_TO_KGS_RATE
+    return int(converted.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 def _canonical_headers(headers: Dict[str, str]) -> str:
