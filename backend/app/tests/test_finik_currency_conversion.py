@@ -64,3 +64,38 @@ class FinikCurrencyConversionTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["amount"], 100)
         self.assertEqual(create_payment_mock.call_args.kwargs["amount"], 8750)
+        self.assertEqual(response.data["payment_url"], "https://pay.test.local/checkout?payment-methods=CARD")
+
+    def test_purchase_response_appends_card_payment_method_to_existing_query(self):
+        finik_config = SimpleNamespace(
+            api_key="test-key",
+            private_key_pem="test-private-pem",
+            account_id="test-account",
+            merchant_category_code="6012",
+            qr_name="Test QR",
+            qr_expires_minutes=30,
+            webhook_url=None,
+        )
+        fake_response = Mock()
+        fake_response.status_code = 201
+        fake_response.headers = {}
+        fake_response.json.return_value = {"paymentUrl": "https://pay.test.local/checkout?lang=ru"}
+        fake_response.text = ""
+
+        with (
+            override_settings(FINIK_REDIRECT_URL="https://academy.local/payment/success"),
+            patch("purchases.views.get_config", return_value=finik_config),
+            patch("purchases.views.create_payment", return_value=fake_response),
+        ):
+            response = self.client.post(
+                reverse("purchase-list"),
+                {"course_id": self.course.id},
+                format="json",
+                **auth_headers(self.user),
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            response.data["payment_url"],
+            "https://pay.test.local/checkout?lang=ru&payment-methods=CARD",
+        )
