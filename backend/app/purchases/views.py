@@ -5,7 +5,6 @@ import json
 import logging
 import requests
 from typing import Any, Dict, Optional
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from django.conf import settings
 from django.http import RawPostDataException
 from django.shortcuts import get_object_or_404
@@ -51,25 +50,6 @@ def _verify_with_authorizer(
         "body": body,
     }
     return Signer(**request_data).verify(public_key_pem, signature)
-
-
-def _with_card_payment_method(payment_url: str) -> str:
-    parsed_url = urlsplit(payment_url)
-    query_params = [
-        (key, value)
-        for key, value in parse_qsl(parsed_url.query, keep_blank_values=True)
-        if key != "payment-methods"
-    ]
-    query_params.append(("payment-methods", "CARD"))
-    return urlunsplit(
-        (
-            parsed_url.scheme,
-            parsed_url.netloc,
-            parsed_url.path,
-            urlencode(query_params, doseq=True),
-            parsed_url.fragment,
-        )
-    )
 
 
 class PurchaseViewSet(mixins.CreateModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
@@ -153,7 +133,8 @@ class PurchaseViewSet(mixins.CreateModelMixin, mixins.RetrieveModelMixin, viewse
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        payment_url = _with_card_payment_method(payment_url)
+        separator = "&" if "?" in payment_url else "?"
+        payment_url = f"{payment_url}{separator}payment-methods=CARD"
         output = self.get_serializer(purchase).data
         return Response({**output, "payment_url": payment_url}, status=status.HTTP_201_CREATED)
 
