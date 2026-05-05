@@ -47,7 +47,9 @@ services:
     command: >
       "certbot certonly --webroot -w /var/www/certbot
       --email nbaishev@gmail.com --agree-tos --no-eff-email
-      -d ustabim.online --keep-until-expiring &&
+      --cert-name ustabim.online
+      -d ustabim.online -d www.ustabim.online
+      --expand --keep-until-expiring &&
       while :; do
         certbot renew --webroot -w /var/www/certbot --quiet;
         sleep 12h;

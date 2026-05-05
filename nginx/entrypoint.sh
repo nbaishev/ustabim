@@ -16,18 +16,34 @@ use_https() {
   echo "Using HTTPS nginx config."
 }
 
+watch_cert() {
+  last_sig=""
+
+  if [ -f "$CERT_PATH" ]; then
+    last_sig="$(cksum "$CERT_PATH")"
+  fi
+
+  while :; do
+    if [ -f "$CERT_PATH" ]; then
+      current_sig="$(cksum "$CERT_PATH")"
+
+      if [ "$current_sig" != "$last_sig" ]; then
+        use_https
+        nginx -s reload
+        last_sig="$current_sig"
+      fi
+    fi
+
+    sleep 60
+  done
+}
+
 if [ -f "$CERT_PATH" ]; then
   use_https
 else
   use_http
-  # When cert appears, swap config and reload.
-  (
-    while [ ! -f "$CERT_PATH" ]; do
-      sleep 5
-    done
-    use_https
-    nginx -s reload
-  ) &
 fi
+
+watch_cert &
 
 exec nginx -g 'daemon off;'
