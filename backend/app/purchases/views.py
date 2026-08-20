@@ -133,8 +133,6 @@ class PurchaseViewSet(mixins.CreateModelMixin, mixins.RetrieveModelMixin, viewse
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        separator = "&" if "?" in payment_url else "?"
-        payment_url = f"{payment_url}{separator}payment-methods=CARD"
         output = self.get_serializer(purchase).data
         return Response({**output, "payment_url": payment_url}, status=status.HTTP_201_CREATED)
 
