@@ -45,7 +45,9 @@ class CourseViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(is_free=True)
         elif price_filter == "paid":
             qs = qs.filter(is_free=False)
-        return qs
+        # annotate() with Count() silently drops Course.Meta.ordering, so it
+        # must be re-applied explicitly here.
+        return qs.order_by("sort_order", "title")
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -93,10 +95,13 @@ class AdminCourseViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset()
         if getattr(self, "action", None) == "retrieve":
             qs = qs.prefetch_related("modules__lessons")
-        return qs.annotate(
+        qs = qs.annotate(
             lessons_count=Count("modules__lessons", distinct=True),
             modules_count=Count("modules", distinct=True),
         )
+        # annotate() with Count() silently drops Course.Meta.ordering, so it
+        # must be re-applied explicitly here.
+        return qs.order_by("sort_order", "title")
 
     def get_serializer_class(self):
         if self.action == "retrieve":
