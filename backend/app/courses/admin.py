@@ -25,7 +25,9 @@ class CourseAdmin(admin.ModelAdmin):
         "price",
         "discount_price",
         "is_featured",
+        "sort_order",
     )
+    list_editable = ("sort_order",)
     search_fields = ("title", "description", "full_description")
     list_filter = ("level", "delivery_mode", "is_free", "published", "is_featured")
     prepopulated_fields = {"id": ("title",)}

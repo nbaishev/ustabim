@@ -30,7 +30,7 @@ class CourseViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [AllowAny]
     search_fields = ["title", "description", "full_description"]
     filterset_fields = ["level", "is_free", "is_featured"]
-    ordering_fields = ["created_at", "title"]
+    ordering_fields = ["created_at", "title", "sort_order"]
 
     def get_queryset(self):
         qs = super().get_queryset()

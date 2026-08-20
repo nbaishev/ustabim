@@ -30,12 +30,13 @@ class Course(models.Model):
     seo_title = models.CharField(max_length=255, blank=True)
     seo_description = models.CharField(max_length=255, blank=True)
     is_featured = models.BooleanField(default=False)
+    sort_order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
 
     class Meta:
-        ordering = ["title"]
+        ordering = ["sort_order", "title"]
 
     @staticmethod
     def normalize_mentor_telegram_username(value):

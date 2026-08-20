@@ -60,6 +60,7 @@ class CourseBriefSerializer(CoursePriceMixin, serializers.ModelSerializer):
             "delivery_mode",
             "mentor_telegram_username",
             "is_featured",
+            "sort_order",
             "lessons_count",
             "modules_count",
         )
@@ -96,6 +97,7 @@ class CourseSerializer(CoursePriceMixin, serializers.ModelSerializer):
             "seo_title",
             "seo_description",
             "is_featured",
+            "sort_order",
             "created_at",
             "updated_at",
             "lessons_count",
@@ -143,6 +145,7 @@ class CourseWriteSerializer(serializers.ModelSerializer):
             "seo_title",
             "seo_description",
             "is_featured",
+            "sort_order",
         )
         extra_kwargs = {
             # Позволяем не указывать slug при создании — он сгенерируется из title
